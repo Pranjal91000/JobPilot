@@ -246,7 +246,10 @@ export const apiClient = {
     const res = await fetch(`/api/sessions/${sessionId}/inspect`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error('Failed to enqueue inspect command');
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(err || 'Failed to enqueue inspect command');
+    }
     return res.json();
   },
 
@@ -254,7 +257,10 @@ export const apiClient = {
     const res = await fetch(`/api/sessions/${sessionId}/autofill`, {
       method: 'POST',
     });
-    if (!res.ok) throw new Error('Failed to enqueue autofill command');
+    if (!res.ok) {
+      const err = await res.text().catch(() => '');
+      throw new Error(err || 'Failed to enqueue autofill command');
+    }
     return res.json();
   },
 

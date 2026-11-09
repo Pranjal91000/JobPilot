@@ -85,11 +85,31 @@ public sealed class WorkdayAutomationService(
             isWorkerOnline);
     }
 
+    private async Task EnsureSingleActiveSessionAsync(Guid sessionId, CancellationToken ct)
+    {
+        var otherActiveSessions = await dbContext.ApplicationSessions
+            .Where(s => s.SessionId != sessionId &&
+                        s.SessionStatus != SessionStatus.Completed &&
+                        s.SessionStatus != SessionStatus.Cancelled &&
+                        s.SessionStatus != SessionStatus.Failed &&
+                        s.SessionStatus != SessionStatus.Interrupted)
+            .ToListAsync(ct);
+
+        foreach (var other in otherActiveSessions)
+        {
+            other.SessionStatus = SessionStatus.Completed;
+            other.CompletedAt = DateTimeOffset.UtcNow;
+            other.LastActivityAt = DateTimeOffset.UtcNow;
+        }
+    }
+
     public async Task<CommandAccepted> InspectAsync(Guid sessionId, CancellationToken ct)
     {
         var session = await dbContext.ApplicationSessions
             .FirstOrDefaultAsync(s => s.SessionId == sessionId, ct)
             ?? throw new KeyNotFoundException($"Session {sessionId} not found.");
+
+        await EnsureSingleActiveSessionAsync(sessionId, ct);
 
         session.SessionStatus = SessionStatus.Inspecting;
         session.LastActivityAt = DateTimeOffset.UtcNow;
@@ -106,6 +126,8 @@ public sealed class WorkdayAutomationService(
                 .ThenInclude(f => f.Mappings)
             .FirstOrDefaultAsync(s => s.SessionId == sessionId, ct)
             ?? throw new KeyNotFoundException($"Session {sessionId} not found.");
+
+        await EnsureSingleActiveSessionAsync(sessionId, ct);
 
         session.SessionStatus = SessionStatus.Mapping;
         session.LastActivityAt = DateTimeOffset.UtcNow;
@@ -191,6 +213,8 @@ public sealed class WorkdayAutomationService(
             .FirstOrDefaultAsync(s => s.SessionId == sessionId, ct)
             ?? throw new KeyNotFoundException($"Session {sessionId} not found.");
 
+        await EnsureSingleActiveSessionAsync(sessionId, ct);
+
         // Collect fields approved for filling
         var fillRequests = new List<FillFieldRequest>();
 
@@ -252,6 +276,8 @@ public sealed class WorkdayAutomationService(
             .FirstOrDefaultAsync(s => s.SessionId == sessionId, ct)
             ?? throw new KeyNotFoundException($"Session {sessionId} not found.");
 
+        await EnsureSingleActiveSessionAsync(sessionId, ct);
+
         var blocking = new List<ValidationIssue>();
         var warnings = new List<ValidationIssue>();
 
@@ -306,6 +332,8 @@ public sealed class WorkdayAutomationService(
                 .ThenInclude(f => f.Answer)
             .FirstOrDefaultAsync(s => s.SessionId == sessionId, ct)
             ?? throw new KeyNotFoundException($"Session {sessionId} not found.");
+
+        await EnsureSingleActiveSessionAsync(sessionId, ct);
 
         var fieldMap = session.Fields.ToDictionary(f => f.FieldId);
         var appliedCount = 0;
