@@ -46,3 +46,4 @@ public sealed class ConfidenceCalculator : IConfidenceCalculator
         return (finalScore, breakdown);
     }
 }
+

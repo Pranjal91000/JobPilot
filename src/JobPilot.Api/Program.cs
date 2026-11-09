@@ -1,6 +1,8 @@
 using JobPilot.Api.Logging;
 using JobPilot.Application.Abstractions;
+using JobPilot.Application.Features.Automation;
 using JobPilot.Application.Features.Mapping;
+using JobPilot.Application.Features.Retention;
 using JobPilot.Infrastructure.AI;
 using JobPilot.Infrastructure.Persistence;
 using JobPilot.Infrastructure.Services;
@@ -72,6 +74,10 @@ builder.Services.AddSingleton<IConfidenceCalculator, ConfidenceCalculator>();
 builder.Services.AddScoped<IAiSettingsService, AiSettingsService>();
 builder.Services.AddScoped<IAiProvider, OpenAiCompatibleAiProvider>();
 builder.Services.AddScoped<IFieldMappingService, FieldMappingService>();
+builder.Services.AddScoped<IAutomationCommandService, AutomationCommandService>();
+builder.Services.AddScoped<IWorkerHeartbeatService, WorkerHeartbeatService>();
+builder.Services.AddScoped<IWorkdayAutomationService, WorkdayAutomationService>();
+builder.Services.AddScoped<IDataRetentionService, DataRetentionService>();
 
 // CORS policy for frontend dev server
 builder.Services.AddCors(options =>
@@ -103,6 +109,21 @@ if (args.Contains("migrate"))
 
 app.UseCors("LocalDev");
 app.UseRouting();
+
+var fixturesDir = Path.Combine(Directory.GetCurrentDirectory(), "fixtures", "mock-workday");
+if (!Directory.Exists(fixturesDir))
+{
+    fixturesDir = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", "fixtures", "mock-workday"));
+}
+if (Directory.Exists(fixturesDir))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(fixturesDir),
+        RequestPath = "/mock-workday"
+    });
+}
+
 app.MapControllers();
 
 app.Run();

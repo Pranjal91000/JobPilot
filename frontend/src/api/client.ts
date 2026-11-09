@@ -1,5 +1,6 @@
 import type {
   AiSettingsDto,
+  AutomationCommandDto,
   CompletenessReport,
   FactRef,
   FieldDetailDto,
@@ -9,10 +10,13 @@ import type {
   JobApplicationSummaryDto,
   ProfileDto,
   ResumeDto,
+  SessionDto,
+  SubmissionApprovalDto,
   TestAiConnectionResponse,
   UpdateAiSettingsRequest,
   UpdateProfileRequest,
   UrlClassification,
+  ValidationReport,
 } from './types';
 
 export const apiClient = {
@@ -214,6 +218,71 @@ export const apiClient = {
       method: 'POST',
     });
     if (!res.ok) throw new Error('Connection test request failed');
+    return res.json();
+  },
+
+  // Automation Sessions & Worker
+  async startAutomationSession(applicationId: string): Promise<SessionDto> {
+    const res = await fetch(`/api/applications/${applicationId}/session/start`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to start browser automation session');
+    return res.json();
+  },
+
+  async getSession(sessionId: string): Promise<SessionDto> {
+    const res = await fetch(`/api/sessions/${sessionId}`);
+    if (!res.ok) throw new Error('Failed to get session status');
+    return res.json();
+  },
+
+  async inspectSession(sessionId: string): Promise<{ commandId: string }> {
+    const res = await fetch(`/api/sessions/${sessionId}/inspect`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to enqueue inspect command');
+    return res.json();
+  },
+
+  async autofillSession(sessionId: string): Promise<{ commandId: string }> {
+    const res = await fetch(`/api/sessions/${sessionId}/autofill`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to enqueue autofill command');
+    return res.json();
+  },
+
+  async navigateSession(sessionId: string, direction: 'Next' | 'Back'): Promise<{ commandId: string }> {
+    const res = await fetch(`/api/sessions/${sessionId}/navigate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ direction }),
+    });
+    if (!res.ok) throw new Error(`Failed to navigate ${direction}`);
+    return res.json();
+  },
+
+  async validateSession(sessionId: string): Promise<ValidationReport> {
+    const res = await fetch(`/api/sessions/${sessionId}/validate`, {
+      method: 'POST',
+    });
+    if (!res.ok) throw new Error('Failed to validate session fields');
+    return res.json();
+  },
+
+  async approveSubmission(sessionId: string, reportId: string, acknowledgedWarnings?: string[]): Promise<SubmissionApprovalDto> {
+    const res = await fetch(`/api/sessions/${sessionId}/approve-submission`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportId, acknowledgedWarnings }),
+    });
+    if (!res.ok) throw new Error('Failed to approve submission');
+    return res.json();
+  },
+
+  async getSessionCommands(sessionId: string): Promise<AutomationCommandDto[]> {
+    const res = await fetch(`/api/sessions/${sessionId}/commands`);
+    if (!res.ok) throw new Error('Failed to load session commands');
     return res.json();
   },
 };

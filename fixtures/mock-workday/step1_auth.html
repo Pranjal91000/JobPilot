@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JobPilot Mock Workday - Candidate Sign In</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f4f6f8; margin: 0; padding: 40px; }
+    .card { max-width: 480px; margin: 40px auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    h1 { font-size: 20px; color: #1c2d42; margin-top: 0; }
+    .form-group { margin-bottom: 20px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 14px; color: #333; }
+    input { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px; }
+    button { width: 100%; padding: 12px; background: #0875e1; color: white; border: none; border-radius: 4px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    button:hover { background: #005bb5; }
+    .skip-link { display: block; text-align: center; margin-top: 16px; color: #0875e1; text-decoration: none; font-size: 13px; }
+    .notice { background: #e8f4fd; border-left: 4px solid #0875e1; padding: 12px; margin-bottom: 20px; font-size: 13px; color: #0c4375; }
+  </style>
+</head>
+<body>
+  <div class="card" data-automation-id="signInPage">
+    <div class="notice">
+      <strong>Workday Candidate Authentication</strong><br />
+      Manual user sign-in step. Automated agents must pause for user authentication.
+    </div>
+    <h1>Sign In to Apply</h1>
+    <form id="authForm" action="step2_contact.html" method="GET">
+      <div class="form-group">
+        <label for="input-email">Email Address <span style="color:red">*</span></label>
+        <input type="email" id="input-email" name="email" data-automation-id="email" required placeholder="user@example.com" />
+      </div>
+      <div class="form-group">
+        <label for="input-password">Password <span style="color:red">*</span></label>
+        <input type="password" id="input-password" name="password" data-automation-id="password" required />
+      </div>
+      <button type="submit" data-automation-id="signInSubmitButton">Sign In</button>
+      <a href="step2_contact.html" class="skip-link" data-automation-id="skipAuthLink" id="skipAuth">Skip / Continue to Application &rarr;</a>
+    </form>
+  </div>
+</body>
+</html>

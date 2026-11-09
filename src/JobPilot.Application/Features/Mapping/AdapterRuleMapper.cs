@@ -95,3 +95,4 @@ public sealed class AdapterRuleMapper : IAdapterRuleMapper
             Reason: $"Matched Workday adapter rule '{cleanId}' with verified profile fact.");
     }
 }
+

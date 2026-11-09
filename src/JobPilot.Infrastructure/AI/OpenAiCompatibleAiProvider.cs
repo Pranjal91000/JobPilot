@@ -196,3 +196,4 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
         return "https://api.openai.com/v1/chat/completions";
     }
 }
+

@@ -35,3 +35,4 @@ public class AiSettingsController : ControllerBase
         return Ok(result);
     }
 }
+

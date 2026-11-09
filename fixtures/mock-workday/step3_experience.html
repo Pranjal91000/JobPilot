@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workday Apply - My Experience</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f3f6; margin: 0; padding: 24px; }
+    .container { max-width: 760px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .header { border-bottom: 2px solid #e1e4e8; padding-bottom: 16px; margin-bottom: 24px; }
+    .step-title { font-size: 14px; text-transform: uppercase; color: #586069; letter-spacing: 0.5px; margin: 0 0 4px 0; }
+    h1 { font-size: 24px; color: #1c2d42; margin: 0; }
+    .section-title { font-size: 18px; color: #1c2d42; margin: 24px 0 12px 0; border-bottom: 1px solid #eaecef; padding-bottom: 6px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+    .full-width { grid-column: span 2; }
+    .form-group { margin-bottom: 16px; }
+    label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 13px; color: #24292e; }
+    input, select, textarea { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #d1d5da; border-radius: 4px; font-size: 14px; }
+    textarea { height: 80px; resize: vertical; }
+    input:focus, select:focus, textarea:focus { border-color: #0875e1; outline: none; }
+    .checkbox-group { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+    .checkbox-group input { width: auto; }
+    .upload-box { border: 2px dashed #0875e1; background: #f0f7ff; padding: 24px; text-align: center; border-radius: 6px; margin-bottom: 24px; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e1e4e8; }
+    .btn-next { padding: 12px 28px; background: #0875e1; color: white; border: none; border-radius: 4px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn-next:hover { background: #005bb5; }
+    .btn-back { padding: 12px 24px; background: #f6f8fa; color: #24292e; border: 1px solid #d1d5da; border-radius: 4px; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container" data-automation-id="applicationFlow">
+    <div class="header">
+      <div class="step-title" data-automation-id="stepIndicator">Step 2 of 5</div>
+      <h1 data-automation-id="step-header">My Experience</h1>
+    </div>
+
+    <form id="experienceForm" action="step4_questions.html" method="GET">
+      <div class="section-title">Resume / CV Attachment</div>
+      <div class="upload-box" data-automation-id="resumeUploadSection">
+        <label for="resumeInput" style="margin-bottom: 12px; font-size: 15px;">Upload your Resume file (.pdf, .docx)</label>
+        <input type="file" id="resumeInput" name="resumeFile" data-automation-id="file-upload-input" accept=".pdf,.doc,.docx" />
+      </div>
+
+      <div class="section-title">Work Experience</div>
+      <div data-automation-id="workExperienceSection" class="repeat-group">
+        <div class="grid">
+          <div class="form-group full-width">
+            <label for="jobTitle">Job Title <span style="color:red">*</span></label>
+            <input type="text" id="jobTitle" name="jobTitle[0]" data-automation-id="jobTitle" aria-required="true" required />
+          </div>
+          <div class="form-group full-width">
+            <label for="company">Company <span style="color:red">*</span></label>
+            <input type="text" id="company" name="company[0]" data-automation-id="company" aria-required="true" required />
+          </div>
+          <div class="form-group">
+            <label for="startDate">Start Date</label>
+            <input type="text" id="startDate" name="startDate[0]" data-automation-id="startDate" placeholder="MM/YYYY" />
+          </div>
+          <div class="form-group">
+            <label for="endDate">End Date</label>
+            <input type="text" id="endDate" name="endDate[0]" data-automation-id="endDate" placeholder="MM/YYYY" />
+          </div>
+          <div class="form-group full-width checkbox-group">
+            <input type="checkbox" id="currentlyWorkHere" name="currentlyWorkHere[0]" data-automation-id="currentlyWorkHere" />
+            <label for="currentlyWorkHere" style="margin: 0; font-weight: normal;">I currently work here</label>
+          </div>
+          <div class="form-group full-width">
+            <label for="description">Role Description / Summary</label>
+            <textarea id="description" name="description[0]" data-automation-id="description"></textarea>
+          </div>
+        </div>
+      </div>
+
+      <div class="section-title">Education</div>
+      <div data-automation-id="educationSection" class="repeat-group">
+        <div class="grid">
+          <div class="form-group full-width">
+            <label for="school">School or University <span style="color:red">*</span></label>
+            <input type="text" id="school" name="school[0]" data-automation-id="school" aria-required="true" required />
+          </div>
+          <div class="form-group">
+            <label for="degree">Degree <span style="color:red">*</span></label>
+            <select id="degree" name="degree[0]" data-automation-id="degree" aria-required="true" required>
+              <option value="">Select Degree</option>
+              <option value="Bachelor of Science">Bachelor of Science</option>
+              <option value="Master of Science">Master of Science</option>
+              <option value="Bachelor of Engineering">Bachelor of Engineering</option>
+              <option value="PhD">Doctor of Philosophy</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="fieldOfStudy">Field of Study</label>
+            <input type="text" id="fieldOfStudy" name="fieldOfStudy[0]" data-automation-id="fieldOfStudy" />
+          </div>
+        </div>
+      </div>
+
+      <div class="actions">
+        <a href="step2_contact.html" class="btn-back" data-automation-id="bottom-navigation-back-button">Back</a>
+        <button type="submit" class="btn-next" data-automation-id="bottom-navigation-next-button" id="nextButton">Save and Continue</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>

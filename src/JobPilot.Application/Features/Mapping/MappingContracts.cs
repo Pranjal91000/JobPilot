@@ -109,3 +109,4 @@ public interface IAiSettingsService
     Task<TestAiConnectionResponse> TestConnectionAsync(CancellationToken ct);
     Task<string?> GetDecryptedApiKeyAsync(CancellationToken ct);
 }
+

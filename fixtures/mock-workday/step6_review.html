@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workday Apply - Review Application</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f3f6; margin: 0; padding: 24px; }
+    .container { max-width: 760px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .header { border-bottom: 2px solid #e1e4e8; padding-bottom: 16px; margin-bottom: 24px; }
+    .step-title { font-size: 14px; text-transform: uppercase; color: #586069; letter-spacing: 0.5px; margin: 0 0 4px 0; }
+    h1 { font-size: 24px; color: #1c2d42; margin: 0; }
+    .alert-banner { background: #e3f2fd; border-left: 4px solid #1976d2; padding: 16px; border-radius: 4px; margin-bottom: 24px; font-size: 14px; color: #0d47a1; }
+    .review-section { margin-bottom: 24px; border: 1px solid #e1e4e8; border-radius: 6px; padding: 16px; }
+    .section-header { font-weight: 600; font-size: 16px; color: #1c2d42; margin-bottom: 12px; }
+    .review-row { display: flex; justify-content: space-between; padding: 6px 0; font-size: 13px; border-bottom: 1px solid #f6f8fa; }
+    .review-label { color: #586069; font-weight: 500; }
+    .review-val { color: #24292e; font-weight: 600; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e1e4e8; }
+    .btn-submit { padding: 14px 32px; background: #00875a; color: white; border: none; border-radius: 4px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .btn-submit:hover { background: #006644; }
+    .btn-back { padding: 12px 24px; background: #f6f8fa; color: #24292e; border: 1px solid #d1d5da; border-radius: 4px; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container" data-automation-id="applicationFlow">
+    <div class="header">
+      <div class="step-title" data-automation-id="stepIndicator">Step 5 of 5</div>
+      <h1 data-automation-id="step-header">Review and Submit</h1>
+    </div>
+
+    <div class="alert-banner">
+      <strong>Final Review Required</strong><br />
+      Please review all information above. Per JobPilot Safety Invariant §18, automated systems must never click the final Submit button. The candidate must review and click Submit manually.
+    </div>
+
+    <div class="review-section">
+      <div class="section-header">Candidate Profile & Contact</div>
+      <div class="review-row"><span class="review-label">Candidate Name:</span><span class="review-val" id="rev-name">Verified Applicant</span></div>
+      <div class="review-row"><span class="review-label">Email:</span><span class="review-val" id="rev-email">applicant@example.com</span></div>
+      <div class="review-row"><span class="review-label">Location:</span><span class="review-val" id="rev-location">San Francisco, CA, USA</span></div>
+    </div>
+
+    <div class="review-section">
+      <div class="section-header">Application Questions</div>
+      <div class="review-row"><span class="review-label">Notice Period:</span><span class="review-val">Immediate</span></div>
+      <div class="review-row"><span class="review-label">Willing to Relocate:</span><span class="review-val">Yes</span></div>
+      <div class="review-row"><span class="review-label">Sponsorship Required:</span><span class="review-val">No</span></div>
+    </div>
+
+    <div class="actions">
+      <a href="step5_disclosures.html" class="btn-back" data-automation-id="bottom-navigation-back-button">Back</a>
+      <!-- Workday Submit Button: MUST NEVER BE AUTOMATED BY JOBPILOT -->
+      <button type="button" class="btn-submit" data-automation-id="bottom-navigation-submit-button" id="submitApplicationButton" onclick="window.location.href='step7_submitted.html'">Submit Application</button>
+    </div>
+  </div>
+</body>
+</html>

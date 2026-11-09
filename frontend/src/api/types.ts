@@ -324,3 +324,65 @@ export interface TestAiConnectionResponse {
   message: string;
   latencyMs?: number | null;
 }
+
+export type SessionStatus =
+  | 'Pending'
+  | 'Launching'
+  | 'AwaitingAuthentication'
+  | 'AwaitingUser'
+  | 'Inspecting'
+  | 'Mapping'
+  | 'Filling'
+  | 'Navigating'
+  | 'WatchingForConfirmation'
+  | 'Paused'
+  | 'Completed'
+  | 'Cancelled'
+  | 'Interrupted'
+  | 'Failed';
+
+export interface SessionDto {
+  sessionId: string;
+  applicationId: string;
+  sessionStatus: SessionStatus;
+  authState: string;
+  currentStepKey?: string | null;
+  completionPercentage: number;
+  lastActivityAt: string;
+  workerOnline: boolean;
+}
+
+export interface AutomationCommandDto {
+  commandId: string;
+  sessionId: string;
+  commandType: string;
+  status: string;
+  outcome?: string | null;
+  error?: string | null;
+  enqueuedAt: string;
+  startedAt?: string | null;
+  finishedAt?: string | null;
+}
+
+export interface ValidationIssue {
+  code: string;
+  message: string;
+  fieldId?: string | null;
+  stepKey?: string | null;
+}
+
+export interface ValidationReport {
+  reportId: string;
+  createdAt: string;
+  isSubmittable: boolean;
+  blocking: ValidationIssue[];
+  warnings: ValidationIssue[];
+  fieldValuesHash: string;
+}
+
+export interface SubmissionApprovalDto {
+  approvalId: string;
+  submissionControl: string;
+  instructions: string;
+  watchingForConfirmationUntil: string;
+}

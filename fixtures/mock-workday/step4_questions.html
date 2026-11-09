@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Workday Apply - Application Questions</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #f0f3f6; margin: 0; padding: 24px; }
+    .container { max-width: 760px; margin: 0 auto; background: white; padding: 32px; border-radius: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.08); }
+    .header { border-bottom: 2px solid #e1e4e8; padding-bottom: 16px; margin-bottom: 24px; }
+    .step-title { font-size: 14px; text-transform: uppercase; color: #586069; letter-spacing: 0.5px; margin: 0 0 4px 0; }
+    h1 { font-size: 24px; color: #1c2d42; margin: 0; }
+    .form-group { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid #f1f1f1; }
+    label, .radio-legend { display: block; font-weight: 600; margin-bottom: 8px; font-size: 14px; color: #24292e; }
+    input[type="text"], input[type="number"], select { width: 100%; box-sizing: border-box; padding: 9px 12px; border: 1px solid #d1d5da; border-radius: 4px; font-size: 14px; }
+    input:focus, select:focus { border-color: #0875e1; outline: none; }
+    .radio-option { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+    .radio-option input { width: auto; }
+    .radio-option label { margin: 0; font-weight: normal; cursor: pointer; }
+    .actions { display: flex; justify-content: space-between; align-items: center; margin-top: 32px; padding-top: 20px; border-top: 1px solid #e1e4e8; }
+    .btn-next { padding: 12px 28px; background: #0875e1; color: white; border: none; border-radius: 4px; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn-next:hover { background: #005bb5; }
+    .btn-back { padding: 12px 24px; background: #f6f8fa; color: #24292e; border: 1px solid #d1d5da; border-radius: 4px; text-decoration: none; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <div class="container" data-automation-id="applicationFlow">
+    <div class="header">
+      <div class="step-title" data-automation-id="stepIndicator">Step 3 of 5</div>
+      <h1 data-automation-id="step-header">Application Questions</h1>
+    </div>
+
+    <form id="questionsForm" action="step5_disclosures.html" method="GET">
+      <div class="form-group">
+        <label for="noticePeriod">What is your notice period? <span style="color:red">*</span></label>
+        <select id="noticePeriod" name="noticePeriod" data-automation-id="noticePeriod" aria-required="true" required>
+          <option value="">Select an option</option>
+          <option value="Immediate">Immediate</option>
+          <option value="15 days">15 days</option>
+          <option value="30 days">30 days</option>
+          <option value="60 days">60 days</option>
+          <option value="90 days">90 days</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <div class="radio-legend">Are you willing to relocate for this position? <span style="color:red">*</span></div>
+        <div class="radio-option">
+          <input type="radio" id="relocate_yes" name="willingToRelocate" value="Yes" data-automation-id="relocation_yes" required />
+          <label for="relocate_yes">Yes</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="relocate_no" name="willingToRelocate" value="No" data-automation-id="relocation_no" required />
+          <label for="relocate_no">No</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="yearsOfExperience">How many years of professional experience do you have with C# and .NET? <span style="color:red">*</span></label>
+        <input type="number" id="yearsOfExperience" name="yearsOfExperience" min="0" max="50" data-automation-id="yearsOfExperience" aria-required="true" required />
+      </div>
+
+      <div class="form-group">
+        <div class="radio-legend">Will you now or in the future require visa sponsorship for employment? <span style="color:red">*</span></div>
+        <div class="radio-option">
+          <input type="radio" id="sponsor_yes" name="requireSponsorship" value="Yes" data-automation-id="sponsorship_yes" required />
+          <label for="sponsor_yes">Yes</label>
+        </div>
+        <div class="radio-option">
+          <input type="radio" id="sponsor_no" name="requireSponsorship" value="No" data-automation-id="sponsorship_no" required />
+          <label for="sponsor_no">No</label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="source">How did you hear about this opportunity?</label>
+        <select id="source" name="source" data-automation-id="source">
+          <option value="">Select Source</option>
+          <option value="LinkedIn">LinkedIn</option>
+          <option value="Company Website">Company Website</option>
+          <option value="Employee Referral">Employee Referral</option>
+          <option value="Indeed">Indeed</option>
+        </select>
+      </div>
+
+      <div class="actions">
+        <a href="step3_experience.html" class="btn-back" data-automation-id="bottom-navigation-back-button">Back</a>
+        <button type="submit" class="btn-next" data-automation-id="bottom-navigation-next-button" id="nextButton">Save and Continue</button>
+      </div>
+    </form>
+  </div>
+</body>
+</html>
