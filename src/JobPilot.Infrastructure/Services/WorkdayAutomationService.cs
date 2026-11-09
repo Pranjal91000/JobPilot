@@ -95,11 +95,15 @@ public sealed class WorkdayAutomationService(
                         s.SessionStatus != SessionStatus.Interrupted)
             .ToListAsync(ct);
 
-        foreach (var other in otherActiveSessions)
+        if (otherActiveSessions.Count > 0)
         {
-            other.SessionStatus = SessionStatus.Completed;
-            other.CompletedAt = DateTimeOffset.UtcNow;
-            other.LastActivityAt = DateTimeOffset.UtcNow;
+            foreach (var other in otherActiveSessions)
+            {
+                other.SessionStatus = SessionStatus.Completed;
+                other.CompletedAt = DateTimeOffset.UtcNow;
+                other.LastActivityAt = DateTimeOffset.UtcNow;
+            }
+            await dbContext.SaveChangesAsync(ct);
         }
     }
 
@@ -111,9 +115,12 @@ public sealed class WorkdayAutomationService(
 
         await EnsureSingleActiveSessionAsync(sessionId, ct);
 
-        session.SessionStatus = SessionStatus.Inspecting;
-        session.LastActivityAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync(ct);
+        if (session.SessionStatus != SessionStatus.Inspecting)
+        {
+            session.SessionStatus = SessionStatus.Inspecting;
+            session.LastActivityAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(ct);
+        }
 
         var cmd = await commandService.EnqueueCommandAsync(sessionId, AutomationCommandType.Inspect, null, ct);
         return new CommandAccepted(cmd.CommandId, sessionId);
@@ -129,9 +136,12 @@ public sealed class WorkdayAutomationService(
 
         await EnsureSingleActiveSessionAsync(sessionId, ct);
 
-        session.SessionStatus = SessionStatus.Mapping;
-        session.LastActivityAt = DateTimeOffset.UtcNow;
-        await dbContext.SaveChangesAsync(ct);
+        if (session.SessionStatus != SessionStatus.Mapping)
+        {
+            session.SessionStatus = SessionStatus.Mapping;
+            session.LastActivityAt = DateTimeOffset.UtcNow;
+            await dbContext.SaveChangesAsync(ct);
+        }
 
         var profile = await profileService.GetVerifiedSnapshotAsync(ct);
         var savedAnswers = await dbContext.SavedAnswers.ToListAsync(ct);
