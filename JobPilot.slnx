@@ -1,0 +1,17 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/JobPilot.Api/JobPilot.Api.csproj" />
+    <Project Path="src/JobPilot.Application/JobPilot.Application.csproj" />
+    <Project Path="src/JobPilot.AutomationWorker/JobPilot.AutomationWorker.csproj" />
+    <Project Path="src/JobPilot.Domain/JobPilot.Domain.csproj" />
+    <Project Path="src/JobPilot.Infrastructure/JobPilot.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/JobPilot.Api.Tests/JobPilot.Api.Tests.csproj" />
+    <Project Path="tests/JobPilot.Application.Tests/JobPilot.Application.Tests.csproj" />
+    <Project Path="tests/JobPilot.ArchitectureTests/JobPilot.ArchitectureTests.csproj" />
+    <Project Path="tests/JobPilot.Automation.Tests/JobPilot.Automation.Tests.csproj" />
+    <Project Path="tests/JobPilot.Domain.Tests/JobPilot.Domain.Tests.csproj" />
+    <Project Path="tests/JobPilot.Infrastructure.Tests/JobPilot.Infrastructure.Tests.csproj" />
+  </Folder>
+</Solution>

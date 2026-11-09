@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <UserSecretsId>dotnet-JobPilot.AutomationWorker-4979707f-a928-400a-add8-7c108ea086b5</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Hosting" Version="10.0.14" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\JobPilot.Infrastructure\JobPilot.Infrastructure.csproj" />
+    <ProjectReference Include="..\JobPilot.Application\JobPilot.Application.csproj" />
+    <ProjectReference Include="..\JobPilot.Domain\JobPilot.Domain.csproj" />
+  </ItemGroup>
+</Project>
