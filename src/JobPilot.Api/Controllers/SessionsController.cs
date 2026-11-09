@@ -24,9 +24,23 @@ public sealed class SessionsController(
     [HttpGet("applications/{applicationId:guid}/session/active")]
     public async Task<ActionResult<SessionDto?>> GetActiveSession(Guid applicationId, CancellationToken ct)
     {
+        var activeStatuses = new[]
+        {
+            Domain.Enums.SessionStatus.Pending,
+            Domain.Enums.SessionStatus.Launching,
+            Domain.Enums.SessionStatus.AwaitingAuthentication,
+            Domain.Enums.SessionStatus.AwaitingUser,
+            Domain.Enums.SessionStatus.Inspecting,
+            Domain.Enums.SessionStatus.Mapping,
+            Domain.Enums.SessionStatus.Filling,
+            Domain.Enums.SessionStatus.Navigating,
+            Domain.Enums.SessionStatus.WatchingForConfirmation,
+            Domain.Enums.SessionStatus.Paused
+        };
+
         var session = await dbContext.ApplicationSessions
             .Include(s => s.Application)
-            .Where(s => s.ApplicationId == applicationId)
+            .Where(s => s.ApplicationId == applicationId && activeStatuses.Contains(s.SessionStatus))
             .OrderByDescending(s => s.StartedAt)
             .FirstOrDefaultAsync(ct);
 

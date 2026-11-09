@@ -325,155 +325,167 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
 
           {/* Action Button Strip */}
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-            {!activeSessionId ? (
-              <button
-                onClick={() => startSessionMutation.mutate()}
-                disabled={startSessionMutation.isPending}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '9px 16px',
-                  background: '#0284c7',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: '8px',
-                  fontWeight: 600,
-                  fontSize: '13px',
-                  cursor: 'pointer',
-                }}
-              >
-                <Play size={15} />
-                {startSessionMutation.isPending ? 'Launching Browser...' : 'Launch Chromium Session'}
-              </button>
-            ) : (
-              <>
-                <button
-                  onClick={() => inspectMutation.mutate()}
-                  disabled={inspectMutation.isPending}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 14px',
-                    background: '#f8fafc',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                  title="Inspect Workday page to extract detected fields"
-                >
-                  <Search size={15} />
-                  {inspectMutation.isPending ? 'Inspecting...' : 'Inspect Page'}
-                </button>
+            <button
+              onClick={() => startSessionMutation.mutate()}
+              disabled={startSessionMutation.isPending}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 16px',
+                background: '#0284c7',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+            >
+              <Play size={15} />
+              {startSessionMutation.isPending
+                ? 'Launching Browser...'
+                : !activeSessionId
+                ? 'Launch Chromium Session'
+                : 'Relaunch Browser'}
+            </button>
 
-                <button
-                  onClick={() => mapMutation.mutate()}
-                  disabled={mapMutation.isPending}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 14px',
-                    background: '#2563eb',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Sparkles size={15} />
-                  {mapMutation.isPending ? 'Mapping...' : 'Run Mapping'}
-                </button>
+            <button
+              onClick={() => {
+                if (!activeSessionId) {
+                  alert('Please click "Launch Chromium Session" first to open the browser window.');
+                  return;
+                }
+                inspectMutation.mutate();
+              }}
+              disabled={inspectMutation.isPending || startSessionMutation.isPending}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                background: '#f8fafc',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: 'pointer',
+              }}
+              title="Inspect Workday page to extract detected fields"
+            >
+              <Search size={15} />
+              {inspectMutation.isPending ? 'Inspecting...' : 'Inspect Page'}
+            </button>
 
-                <button
-                  onClick={() => bulkApproveMutation.mutate()}
-                  disabled={bulkApproveMutation.isPending}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 14px',
-                    background: '#f0fdf4',
-                    color: '#166534',
-                    border: '1px solid #bbf7d0',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Check size={15} />
-                  Approve High-Confidence
-                </button>
+            <button
+              onClick={() => mapMutation.mutate()}
+              disabled={mapMutation.isPending || fields.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                background: '#2563eb',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: fields.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: fields.length === 0 ? 0.6 : 1,
+              }}
+            >
+              <Sparkles size={15} />
+              {mapMutation.isPending ? 'Mapping...' : 'Run Mapping'}
+            </button>
 
-                <button
-                  onClick={() => autofillMutation.mutate()}
-                  disabled={autofillMutation.isPending}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 16px',
-                    background: '#16a34a',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <Send size={15} />
-                  {autofillMutation.isPending ? 'Filling in Chromium...' : 'Autofill Form'}
-                </button>
+            <button
+              onClick={() => bulkApproveMutation.mutate()}
+              disabled={bulkApproveMutation.isPending || fields.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                background: '#f0fdf4',
+                color: '#166534',
+                border: '1px solid #bbf7d0',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: fields.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: fields.length === 0 ? 0.6 : 1,
+              }}
+            >
+              <Check size={15} />
+              Approve High-Confidence
+            </button>
 
-                <button
-                  onClick={() => navigateMutation.mutate('Next')}
-                  disabled={navigateMutation.isPending}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 14px',
-                    background: '#f8fafc',
-                    color: '#334155',
-                    border: '1px solid #cbd5e1',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  Next Step <ArrowRight size={15} />
-                </button>
+            <button
+              onClick={() => autofillMutation.mutate()}
+              disabled={autofillMutation.isPending || fields.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 16px',
+                background: '#16a34a',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: fields.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: fields.length === 0 ? 0.6 : 1,
+              }}
+            >
+              <Send size={15} />
+              {autofillMutation.isPending ? 'Filling in Chromium...' : 'Autofill Form'}
+            </button>
 
-                <button
-                  onClick={handleValidateAndApprove}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '9px 16px',
-                    background: '#047857',
-                    color: '#fff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontWeight: 600,
-                    fontSize: '13px',
-                    cursor: 'pointer',
-                  }}
-                >
-                  <ShieldCheck size={15} />
-                  Ready to Submit
-                </button>
-              </>
-            )}
+            <button
+              onClick={() => navigateMutation.mutate('Next')}
+              disabled={navigateMutation.isPending || !activeSessionId}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 14px',
+                background: '#f8fafc',
+                color: '#334155',
+                border: '1px solid #cbd5e1',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: !activeSessionId ? 'not-allowed' : 'pointer',
+                opacity: !activeSessionId ? 0.6 : 1,
+              }}
+            >
+              Next Step <ArrowRight size={15} />
+            </button>
+
+            <button
+              onClick={handleValidateAndApprove}
+              disabled={fields.length === 0}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '9px 16px',
+                background: '#047857',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '8px',
+                fontWeight: 600,
+                fontSize: '13px',
+                cursor: fields.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: fields.length === 0 ? 0.6 : 1,
+              }}
+            >
+              <ShieldCheck size={15} />
+              Ready to Submit
+            </button>
           </div>
         </div>
 
@@ -588,6 +600,19 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
             </tr>
           </thead>
           <tbody>
+            {filteredFields.length === 0 && (
+              <tr>
+                <td colSpan={7} style={{ padding: '48px 20px', textAlign: 'center', color: '#64748b' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                    <Search size={32} style={{ color: '#94a3b8' }} />
+                    <div style={{ fontWeight: 600, fontSize: '15px', color: '#1e293b' }}>No fields detected yet</div>
+                    <div style={{ fontSize: '13px', maxWidth: '440px', color: '#64748b', lineHeight: 1.5 }}>
+                      Click <strong>Launch Chromium Session</strong> above to open the Workday job portal in Chromium, navigate to the candidate form, and then click <strong>Inspect Page</strong>.
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            )}
             {filteredFields.map((field) => {
               const isSensitive = field.mapping?.isSensitive || false;
               const methodBadge = getMethodBadge(field.mapping?.method);
