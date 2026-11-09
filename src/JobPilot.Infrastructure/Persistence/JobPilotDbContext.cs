@@ -96,16 +96,32 @@ public class JobPilotDbContext : DbContext
     public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = default)
     {
         var now = _clock?.UtcNow ?? DateTimeOffset.UtcNow;
-        foreach (var entry in ChangeTracker.Entries<Domain.Common.AuditableEntity>())
+        foreach (var entry in ChangeTracker.Entries())
         {
             if (entry.State == EntityState.Added)
             {
-                entry.Entity.CreatedAt = now;
-                entry.Entity.UpdatedAt = now;
+                var pk = entry.Metadata.FindPrimaryKey();
+                if (pk != null && pk.Properties.Count == 1 && pk.Properties[0].ClrType == typeof(Guid))
+                {
+                    var prop = entry.Property(pk.Properties[0].Name);
+                    if (prop.CurrentValue is Guid g && g == Guid.Empty)
+                    {
+                        prop.CurrentValue = Guid.CreateVersion7();
+                    }
+                }
             }
-            else if (entry.State == EntityState.Modified)
+
+            if (entry.Entity is Domain.Common.AuditableEntity auditable)
             {
-                entry.Entity.UpdatedAt = now;
+                if (entry.State == EntityState.Added)
+                {
+                    auditable.CreatedAt = now;
+                    auditable.UpdatedAt = now;
+                }
+                else if (entry.State == EntityState.Modified)
+                {
+                    auditable.UpdatedAt = now;
+                }
             }
         }
 

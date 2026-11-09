@@ -185,3 +185,142 @@ export interface FactRef {
   profilePath?: string | null;
 }
 
+// Applications & Intake
+export type ApplicationStatus =
+  | 'ReadyToApply'
+  | 'InProgress'
+  | 'AwaitingUserReview'
+  | 'Submitted'
+  | 'UnderReview'
+  | 'Interview'
+  | 'Offer'
+  | 'Rejected'
+  | 'Archived';
+
+export type ReviewStatus = 'NotStarted' | 'InProgress' | 'Approved' | 'RequiresChanges';
+
+export interface UrlClassification {
+  isSupported: boolean;
+  ats: string;
+  tenantKey?: string | null;
+  host?: string | null;
+  siteKey?: string | null;
+  externalJobId?: string | null;
+  locale?: string | null;
+  normalizedUrl: string;
+}
+
+export interface JobApplicationSummaryDto {
+  applicationId: string;
+  jobPostId: string;
+  jobTitle: string;
+  companyName: string;
+  status: ApplicationStatus;
+  reviewStatus: ReviewStatus;
+  completionPercentage: number;
+  lastActivityAt: string;
+  appliedAt?: string | null;
+}
+
+export interface JobApplicationDto {
+  applicationId: string;
+  jobPostId: string;
+  jobTitle: string;
+  companyName: string;
+  applicationUrl: string;
+  status: ApplicationStatus;
+  reviewStatus: ReviewStatus;
+  completionPercentage: number;
+  submissionReference?: string | null;
+  submissionConfirmedAt?: string | null;
+  lastActivityAt: string;
+  history: Array<{
+    historyId: string;
+    previousStatus?: ApplicationStatus | null;
+    newStatus: ApplicationStatus;
+    changeSource: string;
+    changedAt: string;
+    notes?: string | null;
+  }>;
+}
+
+export interface IntakeRequest {
+  url: string;
+  resumeId?: string | null;
+}
+
+export interface IntakeResult {
+  classification: UrlClassification;
+  jobPost: {
+    jobPostId: string;
+    created: boolean;
+    jobTitle: string;
+    companyName: string;
+    location?: string | null;
+    externalJobId?: string | null;
+    normalizedUrl: string;
+  };
+  application: JobApplicationDto;
+  duplicateWarnings: string[];
+}
+
+// Field Mapping & AI
+export type FieldType = 'Text' | 'Textarea' | 'SingleSelect' | 'MultiSelect' | 'Radio' | 'Checkbox' | 'Date' | 'FileUpload' | 'Unknown';
+export type MappingStatus = 'Proposed' | 'AutoApproved' | 'NeedsReview' | 'Blocked' | 'Approved' | 'Rejected' | 'ManualRequired';
+export type MappingMethod = 'AdapterRule' | 'Dictionary' | 'SavedAnswer' | 'Llm' | 'User';
+
+export interface FieldMappingDto {
+  mappingId: string;
+  profilePath?: string | null;
+  suggestedValue?: string | null;
+  suggestedOptionKey?: string | null;
+  confidenceScore: number;
+  status: MappingStatus;
+  method: MappingMethod;
+  source: string;
+  requiresIntervention: boolean;
+  isSensitive: boolean;
+  reason?: string | null;
+}
+
+export interface AnswerDto {
+  answerId: string;
+  answerValue?: string | null;
+  isUserApproved: boolean;
+}
+
+export interface FieldDetailDto {
+  fieldId: string;
+  fieldIdentifier: string;
+  label: string;
+  type: FieldType;
+  required: boolean;
+  section?: string | null;
+  pageValue?: string | null;
+  availableOptions?: any;
+  mapping?: FieldMappingDto | null;
+  answer?: AnswerDto | null;
+}
+
+// AI Settings
+export interface AiSettingsDto {
+  providerName: string;
+  defaultModel: string;
+  isEnabled: boolean;
+  hasApiKey: boolean;
+  lastTestedAt?: string | null;
+  lastTestStatus?: string | null;
+}
+
+export interface UpdateAiSettingsRequest {
+  providerName: string;
+  defaultModel: string;
+  isEnabled: boolean;
+  apiKey?: string | null;
+}
+
+export interface TestAiConnectionResponse {
+  success: boolean;
+  message: string;
+  latencyMs?: number | null;
+}

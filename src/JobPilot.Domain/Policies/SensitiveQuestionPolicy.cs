@@ -47,7 +47,16 @@ public static class SensitiveQuestionPolicy
     {
         var combined = $"{sectionTitle} {label} {helpText}";
 
-        // Workday specific sections treated wholesale as sensitive
+        // Specific category pattern matching first
+        foreach (var (pattern, category, reason) in Rules)
+        {
+            if (pattern.IsMatch(combined))
+            {
+                return new SensitivityResult(true, category, reason);
+            }
+        }
+
+        // Workday specific sections treated wholesale as sensitive if not specifically categorized above
         if (!string.IsNullOrWhiteSpace(sectionTitle))
         {
             var sec = sectionTitle.Trim().ToLowerInvariant();
@@ -55,14 +64,6 @@ public static class SensitiveQuestionPolicy
             {
                 return new SensitivityResult(true, SensitiveCategory.Demographic,
                     $"Section '{sectionTitle}' is classified as voluntary disclosure / sensitive.");
-            }
-        }
-
-        foreach (var (pattern, category, reason) in Rules)
-        {
-            if (pattern.IsMatch(combined))
-            {
-                return new SensitivityResult(true, category, reason);
             }
         }
 

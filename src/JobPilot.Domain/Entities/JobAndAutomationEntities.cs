@@ -121,7 +121,7 @@ public sealed class JobApplication : AuditableEntity
 
 public sealed class JobApplicationStatusHistory
 {
-    public Guid HistoryId { get; set; } = Guid.CreateVersion7();
+    public Guid HistoryId { get; set; }
     public Guid ApplicationId { get; set; }
     public ApplicationStatus? PreviousStatus { get; set; }
     public ApplicationStatus NewStatus { get; set; }

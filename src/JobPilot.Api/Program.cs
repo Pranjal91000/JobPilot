@@ -1,5 +1,7 @@
 using JobPilot.Api.Logging;
 using JobPilot.Application.Abstractions;
+using JobPilot.Application.Features.Mapping;
+using JobPilot.Infrastructure.AI;
 using JobPilot.Infrastructure.Persistence;
 using JobPilot.Infrastructure.Services;
 using Microsoft.AspNetCore.DataProtection;
@@ -56,6 +58,20 @@ builder.Services.AddSingleton<IFileStore, LocalEncryptedFileStore>();
 
 builder.Services.AddScoped<IUserProfileService, UserProfileService>();
 builder.Services.AddScoped<IResumeService, ResumeService>();
+builder.Services.AddScoped<IJobPostService, JobPostService>();
+builder.Services.AddScoped<IJobApplicationService, JobApplicationService>();
+builder.Services.AddScoped<JobApplicationService>();
+
+// Mapping & AI Services (Spec §16, §17)
+builder.Services.AddHttpClient();
+builder.Services.AddSingleton<IAdapterRuleMapper, AdapterRuleMapper>();
+builder.Services.AddSingleton<IDictionaryMapper, DictionaryMapper>();
+builder.Services.AddSingleton<ISavedAnswerMatcher, SavedAnswerMatcher>();
+builder.Services.AddSingleton<IGroundingValidator, GroundingValidator>();
+builder.Services.AddSingleton<IConfidenceCalculator, ConfidenceCalculator>();
+builder.Services.AddScoped<IAiSettingsService, AiSettingsService>();
+builder.Services.AddScoped<IAiProvider, OpenAiCompatibleAiProvider>();
+builder.Services.AddScoped<IFieldMappingService, FieldMappingService>();
 
 // CORS policy for frontend dev server
 builder.Services.AddCors(options =>

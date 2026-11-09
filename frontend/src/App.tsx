@@ -5,9 +5,15 @@ import { AppHeader } from './components/AppHeader';
 import { ProfileView } from './features/profile/ProfileView';
 import { CompletenessCard } from './features/profile/CompletenessCard';
 import { ResumeManager } from './features/resumes/ResumeManager';
+import { ApplicationsView } from './features/applications/ApplicationsView';
+import { FieldMappingReview } from './features/applications/FieldMappingReview';
+import { AiSettingsModal } from './features/ai/AiSettingsModal';
 
 export function App() {
-  const [currentTab, setCurrentTab] = useState<'profile' | 'resumes'>('profile');
+  const [currentTab, setCurrentTab] = useState<'applications' | 'profile' | 'resumes'>('applications');
+  const [selectedApplicationId, setSelectedApplicationId] = useState<string | null>(null);
+  const [isAiSettingsOpen, setIsAiSettingsOpen] = useState(false);
+
   const [profile, setProfile] = useState<ProfileDto | null>(null);
   const [completeness, setCompleteness] = useState<CompletenessReport | null>(null);
   const [health, setHealth] = useState<{ status: string; database: string } | null>(null);
@@ -20,8 +26,8 @@ export function App() {
       setError(null);
       const [h, p, c] = await Promise.all([
         apiClient.getHealth().catch(() => null),
-        apiClient.getProfile(),
-        apiClient.getCompleteness().catch(() => null)
+        apiClient.getProfile().catch(() => null),
+        apiClient.getCompleteness().catch(() => null),
       ]);
 
       setHealth(h);
@@ -48,45 +54,78 @@ export function App() {
     }
   };
 
+  const handleTabChange = (tab: 'applications' | 'profile' | 'resumes') => {
+    setCurrentTab(tab);
+    if (tab !== 'applications') {
+      setSelectedApplicationId(null);
+    }
+  };
+
   return (
-    <div>
+    <div style={{ minHeight: '100vh', background: '#f8fafc' }}>
       <AppHeader
         currentTab={currentTab}
-        onTabChange={setCurrentTab}
+        onTabChange={handleTabChange}
         health={health}
+        onOpenAiSettings={() => setIsAiSettingsOpen(true)}
       />
 
-      <main className="container">
+      <main style={{ paddingBottom: '40px' }}>
         {loading ? (
-          <div style={{ textAlign: 'center', padding: '3rem', color: '#64748b' }}>
+          <div style={{ textAlign: 'center', padding: '4rem', color: '#64748b' }}>
             Loading JobPilot workspace...
           </div>
         ) : error ? (
-          <div className="card" style={{ borderLeft: '4px solid #dc2626' }}>
-            <h3 style={{ color: '#dc2626', marginBottom: '0.5rem' }}>Connection Notice</h3>
-            <p style={{ color: '#64748b', marginBottom: '1rem' }}>{error}</p>
-            <p style={{ fontSize: '0.85rem', color: '#475569' }}>
+          <div style={{ maxWidth: '800px', margin: '40px auto', background: '#fff', borderRadius: '12px', padding: '24px', borderLeft: '4px solid #dc2626' }}>
+            <h3 style={{ color: '#dc2626', margin: '0 0 8px 0' }}>Connection Notice</h3>
+            <p style={{ color: '#64748b', margin: '0 0 16px 0' }}>{error}</p>
+            <p style={{ fontSize: '13px', color: '#475569', margin: 0 }}>
               Ensure <code>JobPilot.Api</code> is running locally on <code>http://localhost:5080</code>.
             </p>
-            <button className="btn btn-outline btn-sm" style={{ marginTop: '1rem' }} onClick={loadData}>
+            <button
+              onClick={loadData}
+              style={{ marginTop: '16px', padding: '8px 16px', background: '#2563eb', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}
+            >
               Retry Connection
             </button>
           </div>
         ) : (
           <>
+            {currentTab === 'applications' && (
+              selectedApplicationId ? (
+                <FieldMappingReview
+                  applicationId={selectedApplicationId}
+                  onBack={() => setSelectedApplicationId(null)}
+                  onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+                />
+              ) : (
+                <ApplicationsView
+                  onSelectApplication={(id) => setSelectedApplicationId(id)}
+                  onOpenAiSettings={() => setIsAiSettingsOpen(true)}
+                />
+              )
+            )}
+
             {currentTab === 'profile' && profile && (
-              <>
+              <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
                 {completeness && <CompletenessCard report={completeness} onRefresh={loadData} />}
                 <ProfileView profile={profile} onProfileUpdated={handleProfileUpdated} />
-              </>
+              </div>
             )}
 
             {currentTab === 'resumes' && (
-              <ResumeManager />
+              <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '24px' }}>
+                <ResumeManager />
+              </div>
             )}
           </>
         )}
       </main>
+
+      <AiSettingsModal
+        isOpen={isAiSettingsOpen}
+        onClose={() => setIsAiSettingsOpen(false)}
+      />
     </div>
   );
 }
