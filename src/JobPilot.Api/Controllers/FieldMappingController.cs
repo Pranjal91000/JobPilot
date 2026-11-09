@@ -331,7 +331,9 @@ public class FieldMappingController : ControllerBase
     private async Task<ApplicationSession> EnsureSessionAsync(Guid applicationId, CancellationToken ct)
     {
         var session = await _db.ApplicationSessions
-            .FirstOrDefaultAsync(s => s.ApplicationId == applicationId, ct);
+            .Where(s => s.ApplicationId == applicationId)
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefaultAsync(ct);
 
         if (session == null)
         {

@@ -6,3 +6,4 @@ echo ====================================================
 cd /d "%~dp0"
 dotnet run --project src/JobPilot.AutomationWorker/JobPilot.AutomationWorker.csproj
 pause
+

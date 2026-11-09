@@ -34,10 +34,24 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
   const [showApprovalModal, setShowApprovalModal] = useState<boolean>(false);
   const [validationReport, setValidationReport] = useState<ValidationReport | null>(null);
 
+  const [statusNotification, setStatusNotification] = useState<string | null>(null);
+
   const { data: application } = useQuery<JobApplicationDto>({
     queryKey: ['application', applicationId],
     queryFn: () => apiClient.getApplication(applicationId),
   });
+
+  // Query active session for this application on mount
+  const { data: activeSessionData } = useQuery({
+    queryKey: ['active-session', applicationId],
+    queryFn: () => apiClient.getActiveSession(applicationId),
+  });
+
+  React.useEffect(() => {
+    if (activeSessionData?.sessionId && !activeSessionId) {
+      setActiveSessionId(activeSessionData.sessionId);
+    }
+  }, [activeSessionData, activeSessionId]);
 
   const { data: fields = [] } = useQuery<FieldDetailDto[]>({
     queryKey: ['application-fields', applicationId],
@@ -62,16 +76,27 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
     onSuccess: (newSession) => {
       setActiveSessionId(newSession.sessionId);
       queryClient.invalidateQueries({ queryKey: ['application', applicationId] });
+      queryClient.invalidateQueries({ queryKey: ['active-session', applicationId] });
+    },
+    onError: (err: any) => {
+      alert(err.message || 'Failed to start browser session.');
     },
   });
 
   const inspectMutation = useMutation({
     mutationFn: () => apiClient.inspectSession(activeSessionId!),
     onSuccess: () => {
+      setStatusNotification('Inspecting page elements and mapping profile facts...');
       setTimeout(() => {
+        mapMutation.mutate();
         queryClient.invalidateQueries({ queryKey: ['application-fields', applicationId] });
         queryClient.invalidateQueries({ queryKey: ['session', activeSessionId] });
+        setStatusNotification('Page inspected and mapped successfully!');
+        setTimeout(() => setStatusNotification(null), 4000);
       }, 1500);
+    },
+    onError: (err: any) => {
+      alert(err.message || 'Inspection failed. Ensure browser is open.');
     },
   });
 
@@ -451,6 +476,48 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
             )}
           </div>
         </div>
+
+        {session?.sessionStatus === 'AwaitingAuthentication' && (
+          <div
+            style={{
+              marginTop: '16px',
+              padding: '14px 18px',
+              borderRadius: '12px',
+              background: '#fffbeb',
+              border: '1px solid #fef3c7',
+              color: '#92400e',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+            }}
+          >
+            <AlertTriangle size={18} style={{ flexShrink: 0, color: '#d97706' }} />
+            <div>
+              <strong>Action Required in Chromium:</strong> The Workday portal is asking for candidate login or navigation. Please log in or navigate to the form in the Chromium browser window, then click <strong>Inspect Page</strong>.
+            </div>
+          </div>
+        )}
+
+        {statusNotification && (
+          <div
+            style={{
+              marginTop: '16px',
+              padding: '12px 18px',
+              borderRadius: '12px',
+              background: '#f0fdf4',
+              border: '1px solid #bbf7d0',
+              color: '#166534',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+            }}
+          >
+            <CheckCircle size={18} style={{ color: '#16a34a' }} />
+            <span>{statusNotification}</span>
+          </div>
+        )}
 
         {/* Workday Submission Safety Banner */}
         <div

@@ -230,6 +230,12 @@ export const apiClient = {
     return res.json();
   },
 
+  async getActiveSession(applicationId: string): Promise<SessionDto | null> {
+    const res = await fetch(`/api/applications/${applicationId}/session/active`);
+    if (!res.ok) return null;
+    return res.json();
+  },
+
   async getSession(sessionId: string): Promise<SessionDto> {
     const res = await fetch(`/api/sessions/${sessionId}`);
     if (!res.ok) throw new Error('Failed to get session status');

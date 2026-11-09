@@ -21,6 +21,30 @@ public sealed class SessionsController(
         return Ok(session);
     }
 
+    [HttpGet("applications/{applicationId:guid}/session/active")]
+    public async Task<ActionResult<SessionDto?>> GetActiveSession(Guid applicationId, CancellationToken ct)
+    {
+        var session = await dbContext.ApplicationSessions
+            .Include(s => s.Application)
+            .Where(s => s.ApplicationId == applicationId)
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (session == null) return Ok(null);
+
+        var isWorkerOnline = await heartbeatService.IsWorkerOnlineAsync(ct);
+
+        return Ok(new SessionDto(
+            session.SessionId,
+            session.ApplicationId,
+            session.SessionStatus,
+            Domain.Enums.AuthState.Unknown,
+            session.CurrentStepKey,
+            session.Application.CompletionPercentage,
+            session.LastActivityAt,
+            isWorkerOnline));
+    }
+
     [HttpGet("sessions/{sessionId:guid}")]
     public async Task<ActionResult<SessionDto>> GetSession(Guid sessionId, CancellationToken ct)
     {
