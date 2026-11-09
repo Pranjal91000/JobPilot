@@ -47,12 +47,26 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
         logger.LogInformation("Launching Chromium session {SessionId} with profile at {Dir} (Headless: {Headless})",
             sessionId, userProfileDir, headless);
 
-        _browserContext = await _playwright.Chromium.LaunchPersistentContextAsync(userProfileDir, new BrowserTypeLaunchPersistentContextOptions
+        var options = new BrowserTypeLaunchPersistentContextOptions
         {
             Headless = headless,
             ViewportSize = new ViewportSize { Width = 1280, Height = 900 },
-            AcceptDownloads = true
-        });
+            AcceptDownloads = true,
+            Args = new[]
+            {
+                "--no-sandbox",
+                "--disable-blink-features=AutomationControlled",
+                "--start-maximized"
+            }
+        };
+
+        var bundledExe = Path.Combine(appData, "ms-playwright", "chromium-1155", "chrome-win", "chrome.exe");
+        if (File.Exists(bundledExe))
+        {
+            options.ExecutablePath = bundledExe;
+        }
+
+        _browserContext = await _playwright.Chromium.LaunchPersistentContextAsync(userProfileDir, options);
 
         // Use existing page or create new
         _activePage = _browserContext.Pages.Count > 0
