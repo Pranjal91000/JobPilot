@@ -258,7 +258,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
   const getMethodBadge = (method?: string) => {
     switch (method) {
       case 'AdapterRule':
-        return { label: 'Workday Rule', bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' };
+        return { label: 'Site Rule', bg: '#eff6ff', text: '#1d4ed8', border: '#bfdbfe' };
       case 'Dictionary':
         return { label: 'Dictionary Match', bg: '#eef2ff', text: '#4338ca', border: '#c7d2fe' };
       case 'SavedAnswer':
@@ -374,7 +374,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
           <div style={{ minWidth: 0, flex: '1 1 280px', overflowWrap: 'anywhere' }}>
             <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '8px' }}>
               <span style={{ fontSize: '13px', fontWeight: 600, color: '#2563eb' }}>
-                {application?.companyName || 'Workday Application'}
+                {application?.companyName || 'Job Application'}
               </span>
               {session?.currentStepKey && (
                 <span style={{ background: '#f1f5f9', color: '#475569', fontSize: '12px', padding: '2px 8px', borderRadius: '4px', fontWeight: 600 }}>
@@ -396,7 +396,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', minWidth: 0, flex: '1 1 300px' }}>
               <RunBadge status={run} />
               <span style={{ fontSize: '13px', color: '#334155', overflowWrap: 'anywhere' }}>
-                {run?.runMessage ?? 'Run to Review fills every step automatically and stops at Workday\'s Review page. You press Submit.'}
+                {run?.runMessage ?? 'Run to Review fills the application automatically and stops before submitting (Workday\'s Review page, or the filled form on Greenhouse, Lever and Ashby). You press Submit.'}
               </span>
             </div>
             <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -467,7 +467,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
                 fontSize: '13px',
                 cursor: 'pointer',
               }}
-              title="Inspect Workday page to extract detected fields"
+              title="Read the form fields on the page open in the browser"
             >
               <Search size={15} />
               {inspectMutation.isPending ? 'Inspecting...' : 'Inspect Page'}
@@ -601,7 +601,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
           >
             <AlertTriangle size={18} style={{ flexShrink: 0, color: '#d97706' }} />
             <div>
-              <strong>Action Required in Chromium:</strong> The Workday portal is asking for candidate login or navigation. Please log in or navigate to the form in the Chromium browser window, then click <strong>Inspect Page</strong>.
+              <strong>Action Required in Chromium:</strong> The job site is asking for a candidate login or navigation. Please log in or navigate to the form in the Chromium browser window, then click <strong>Inspect Page</strong>.
             </div>
           </div>
         )}
@@ -626,7 +626,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
           </div>
         )}
 
-        {/* Workday Submission Safety Banner */}
+        {/* Submission Safety Banner */}
         <div
           style={{
             marginTop: '18px',
@@ -643,8 +643,8 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
         >
           <ShieldCheck size={18} style={{ flexShrink: 0 }} />
           <div>
-            <strong>Strict Workday Safety Rule:</strong> JobPilot automates form field review and autofill with verified profile grounding, but will{' '}
-            <strong>never click the final Workday Submit button</strong>. You will always review the filled form in the visible Chromium window and personally click Submit.
+            <strong>Submission Safety Rule:</strong> JobPilot automates form field review and autofill with verified profile grounding, but will{' '}
+            <strong>never click the final Submit button</strong>. You will always review the filled form in the visible Chromium window and personally click Submit.
           </div>
         </div>
       </div>
@@ -716,7 +716,7 @@ export const FieldMappingReview: React.FC<Props> = ({ applicationId, onBack, onO
                     <Search size={32} style={{ color: '#94a3b8' }} />
                     <div style={{ fontWeight: 600, fontSize: '15px', color: '#1e293b' }}>No fields detected yet</div>
                     <div style={{ fontSize: '13px', maxWidth: '440px', color: '#64748b', lineHeight: 1.5 }}>
-                      Click <strong>Launch Chromium Session</strong> above to open the Workday job portal in Chromium, navigate to the candidate form, and then click <strong>Inspect Page</strong>.
+                      Click <strong>Launch Chromium Session</strong> above to open the job in Chromium, navigate to the application form, and then click <strong>Inspect Page</strong>.
                     </div>
                   </div>
                 </td>

@@ -219,7 +219,7 @@ public sealed partial class WorkdayAdapter
 
     // Tags the currently visible list options with data-jp-opt=<index> and returns their texts,
     // so C# can choose one by text and click it precisely (Playwright 1.50 has no visible-only filter).
-    private const string CollectOptionsScript = """
+    internal const string CollectOptionsScript = """
         () => {
           const vis = el => !!(el && (el.offsetWidth > 0 || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0)));
           document.querySelectorAll('[data-jp-opt]').forEach(e => e.removeAttribute('data-jp-opt'));
@@ -233,7 +233,7 @@ public sealed partial class WorkdayAdapter
         """;
 
     // Is a Workday search/list still loading?
-    private const string PromptBusyScript = """
+    internal const string PromptBusyScript = """
         () => {
           const vis = el => !!(el && (el.offsetWidth > 0 || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0)));
           return Array.from(document.querySelectorAll(
@@ -262,7 +262,7 @@ public sealed partial class WorkdayAdapter
             : null;
     }
 
-    private static string CssAttr(string value) => value.Replace("\\", "\\\\").Replace("'", "\\'");
+    internal static string CssAttr(string value) => value.Replace("\\", "\\\\").Replace("'", "\\'");
 
     private async Task<FillResult> FillWorkdayWidgetAsync(
         IPage page, FieldDescriptor field, string kind, ILocator locator, string target, string? optionKey, CancellationToken ct)
@@ -532,7 +532,7 @@ public sealed partial class WorkdayAdapter
     /// loading, they differ from <paramref name="stale"/> (what was showing before the search),
     /// and either one matches well or the list has stopped changing.
     /// </summary>
-    private static async Task<(string? Picked, string[] Seen)> PickOptionDetailedAsync(IPage page, string target, int timeoutMs, string[]? stale = null)
+    internal static async Task<(string? Picked, string[] Seen)> PickOptionDetailedAsync(IPage page, string target, int timeoutMs, string[]? stale = null)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         string[] options = [];
@@ -609,26 +609,26 @@ public sealed partial class WorkdayAdapter
     }
 
     // Keeps characters that matter in skills and codes: "C#", "C++", ".NET", "+91".
-    private static string NormalizeText(string s) =>
+    internal static string NormalizeText(string s) =>
         Regex.Replace(Regex.Replace((s ?? "").ToLowerInvariant(), @"[^a-z0-9#+.]+", " "), @"\s+", " ").Trim();
 
-    private static bool SameText(string? a, string? b)
+    internal static bool SameText(string? a, string? b)
     {
         var x = NormalizeText(a ?? "");
         var y = NormalizeText(b ?? "");
         return x == y || (x.Length > 0 && y.Length > 0 && (x.Contains(y) || y.Contains(x)));
     }
 
-    private static List<string> SplitItems(string value) =>
+    internal static List<string> SplitItems(string value) =>
         value.Split(new[] { ',', ';', '\n', '|' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
              .Where(s => s.Length > 0)
              .Distinct(StringComparer.OrdinalIgnoreCase)
              .ToList();
 
-    private static bool IsTruthy(string v) =>
+    internal static bool IsTruthy(string v) =>
         v.Trim().ToLowerInvariant() is "true" or "yes" or "y" or "1" or "checked" or "on";
 
-    private static string NormalizeBoolean(string v) => v.Trim().ToLowerInvariant() switch
+    internal static string NormalizeBoolean(string v) => v.Trim().ToLowerInvariant() switch
     {
         "true" or "y" => "Yes",
         "false" or "n" => "No",

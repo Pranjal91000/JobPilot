@@ -11,6 +11,9 @@ public sealed class DictionaryMapper : IDictionaryMapper
     private static readonly DictionaryRule[] Rules =
     [
         new(new Regex(@"^(first\s*names?(\(s\))?|given\s*names?(\(s\))?|prénom|forename)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.FirstName", 0.97m),
+        new(new Regex(@"^(full\s*name|name|your\s*name|full\s*legal\s*name|legal\s*name)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.FullName", 0.96m),
+        new(new Regex(@"^(current\s*location|location|where\s*are\s*you\s*(currently\s*)?(located|based)|city\s*(and|&|,)\s*country)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Location.Current", 0.90m),
+        new(new Regex(@"^((personal\s*)?website|portfolio(\s*url)?|other\s*website)(\s*url)?$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Links.Portfolio", 0.92m),
         new(new Regex(@"^(last\s*names?(\(s\))?|family\s*names?(\(s\))?|surname|nom(\s*de\s*famille)?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.LastName", 0.97m),
         new(new Regex(@"^(email(\s*address)?|e-mail(\s*address)?|courriel)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Contact.Email", 0.97m),
         new(new Regex(@"^(phone(\s*number)?|mobile(\s*phone)?|cell(\s*phone)?|telephone|contact\s*number)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Contact.PhoneNational", 0.97m),

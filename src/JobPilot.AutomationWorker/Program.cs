@@ -20,7 +20,14 @@ builder.Services.AddDbContext<JobPilotDbContext>(options =>
 builder.Services.AddScoped<IAutomationCommandService, AutomationCommandService>();
 builder.Services.AddScoped<IWorkerHeartbeatService, WorkerHeartbeatService>();
 builder.Services.AddSingleton<IBrowserSessionManager, BrowserSessionManager>();
-builder.Services.AddSingleton<IWorkdayAdapter, WorkdayAdapter>();
+// One adapter per ATS; the worker picks the right one for each application.
+builder.Services.AddSingleton<WorkdayAdapter>();
+builder.Services.AddSingleton<IWorkdayAdapter>(sp => sp.GetRequiredService<WorkdayAdapter>());
+builder.Services.AddSingleton<IApplyFormAdapter>(sp => sp.GetRequiredService<WorkdayAdapter>());
+builder.Services.AddSingleton<IApplyFormAdapter, GreenhouseAdapter>();
+builder.Services.AddSingleton<IApplyFormAdapter, LeverAdapter>();
+builder.Services.AddSingleton<IApplyFormAdapter, AshbyAdapter>();
+builder.Services.AddSingleton<AdapterRegistry>();
 
 // The API holds the encryption keys (resume, AI key, Workday password) and makes the per-step
 // decisions; the worker asks it over localhost.

@@ -305,6 +305,29 @@ public class UserProfileService : IUserProfileService
         if (verifiedSet.Contains("Preferences.NoticePeriodDays") && profile.NoticePeriodDays.HasValue)
             verifiedFacts["Preferences.NoticePeriodDays"] = profile.NoticePeriodDays.Value;
 
+        // Derived and extra facts asked for by single-page forms (Greenhouse, Lever, Ashby).
+        if (verifiedFacts.ContainsKey("Personal.FirstName") && verifiedFacts.ContainsKey("Personal.LastName"))
+            verifiedFacts["Personal.FullName"] = $"{profile.FirstName} {profile.LastName}".Trim();
+
+        if (!string.IsNullOrWhiteSpace(profile.CurrentLocation) &&
+            (verifiedSet.Contains("Location.Current") || verifiedSet.Contains("Address.City")))
+            verifiedFacts["Location.Current"] = profile.CurrentLocation;
+
+        var verifiedLinks = await _db.ProfessionalLinks
+            .Where(l => l.UserId == _currentUser.UserId && l.Provenance.Status == VerificationStatus.Verified)
+            .ToListAsync(ct);
+        foreach (var link in verifiedLinks)
+        {
+            var key = link.LinkType switch
+            {
+                LinkType.LinkedIn => "Links.LinkedIn",
+                LinkType.GitHub => "Links.GitHub",
+                LinkType.Portfolio => "Links.Portfolio",
+                _ => null
+            };
+            if (key != null && !verifiedFacts.ContainsKey(key)) verifiedFacts[key] = link.Url;
+        }
+
         // Verified Employments
         var verifiedEmps = await _db.EmploymentHistories
             .Where(e => e.UserId == _currentUser.UserId && e.Provenance.Status == VerificationStatus.Verified)

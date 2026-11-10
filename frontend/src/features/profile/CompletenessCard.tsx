@@ -43,7 +43,7 @@ export const CompletenessCard: React.FC<Props> = ({ report }) => {
       {report.missingOrUnconfirmed.length > 0 && (
         <div style={{ marginTop: '1rem', paddingTop: '0.75rem', borderTop: '1px solid #f1f5f9' }}>
           <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#475569', marginBottom: '0.5rem' }}>
-            Items Workday applications commonly require:
+            Items job applications commonly require:
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
             {report.missingOrUnconfirmed.map(issue => (

@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Senior Engineer - Acme (mock Greenhouse)</title>
+  <style>
+    body { font-family: sans-serif; max-width: 720px; margin: 24px auto; }
+    .field { margin: 14px 0; }
+    .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+    .select__menu { border: 1px solid #ccc; margin-top: 2px; }
+    .select__menu div[role=option] { padding: 4px 8px; cursor: pointer; }
+    .select__menu div[role=option]:hover { background: #eef; }
+  </style>
+</head>
+<body>
+  <div class="job__title"><h1>Senior Engineer</h1></div>
+  <div class="job__description">Build reliable services at Acme. C#, .NET, PostgreSQL.</div>
+
+  <!-- Mirrors job-boards.greenhouse.io markup: label[for], "*" for required, hidden file input
+       behind an Attach button, a react-select style combobox, EEO-style selects and groups. -->
+  <form id="application-form" onsubmit="event.preventDefault(); document.body.innerHTML = '<h1>Thank you for applying!</h1>';">
+    <div class="field"><label for="first_name">First Name<span>*</span></label>
+      <input id="first_name" name="first_name" type="text" aria-required="true"></div>
+    <div class="field"><label for="last_name">Last Name<span>*</span></label>
+      <input id="last_name" name="last_name" type="text" aria-required="true"></div>
+    <div class="field"><label for="email">Email<span>*</span></label>
+      <input id="email" name="email" type="email" aria-required="true"></div>
+    <div class="field"><label for="phone">Phone</label>
+      <input id="phone" name="phone" type="tel"></div>
+
+    <div class="field">
+      <div class="label" id="upload-label-resume">Resume/CV<span>*</span></div>
+      <button type="button" onclick="document.getElementById('resume').click()">Attach</button>
+      <input id="resume" name="resume" type="file" class="visually-hidden" aria-required="true">
+    </div>
+
+    <div class="field"><label for="question_1">LinkedIn Profile</label>
+      <input id="question_1" name="question_1" type="text"></div>
+
+    <div class="field"><label for="question_2">Are you legally authorized to work in India?<span>*</span></label>
+      <select id="question_2" name="question_2" aria-required="true">
+        <option value="">Select...</option>
+        <option value="1">Yes</option>
+        <option value="0">No</option>
+      </select></div>
+
+    <div class="field">
+      <label id="question_3-label" for="question_3">How did you hear about us?</label>
+      <div class="select__container">
+        <div class="select__control">
+          <span class="select__single-value" id="question_3-value">Select...</span>
+          <input id="question_3" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-labelledby="question_3-label" type="text">
+        </div>
+        <div class="select__menu" id="question_3-menu" role="listbox" hidden></div>
+      </div>
+    </div>
+
+    <fieldset class="field">
+      <legend>Are you willing to relocate?<span>*</span></legend>
+      <input type="radio" id="relocate_yes" name="question_4" value="yes"><label for="relocate_yes">Yes</label>
+      <input type="radio" id="relocate_no" name="question_4" value="no"><label for="relocate_no">No</label>
+    </fieldset>
+
+    <fieldset class="field">
+      <legend>Which languages do you speak?</legend>
+      <label><input type="checkbox" name="question_5" value="en"> English</label>
+      <label><input type="checkbox" name="question_5" value="hi"> Hindi</label>
+      <label><input type="checkbox" name="question_5" value="fr"> French</label>
+    </fieldset>
+
+    <div class="field"><label for="question_6">Why do you want to work at Acme?<span>*</span></label>
+      <textarea id="question_6" name="question_6" aria-required="true"></textarea></div>
+
+    <div class="field"><label for="start_date">Earliest start date</label>
+      <input id="start_date" name="start_date" type="date"></div>
+
+    <div class="field"><label><input type="checkbox" id="consent" name="consent"> I agree to the privacy notice</label></div>
+
+    <button type="submit" id="submit_app">Submit application</button>
+  </form>
+
+  <script>
+    // Minimal react-select behaviour: options filter as you type; clicking one sets the value.
+    const sources = ['LinkedIn', 'Indeed', 'Company website', 'Employee referral', 'Other'];
+    const input = document.getElementById('question_3');
+    const menu = document.getElementById('question_3-menu');
+    const value = document.getElementById('question_3-value');
+    function render() {
+      const q = input.value.toLowerCase();
+      const matches = sources.filter(s => s.toLowerCase().includes(q));
+      menu.innerHTML = '';
+      // Results arrive asynchronously, like a real search.
+      setTimeout(() => {
+        (matches.length ? matches : ['No options']).forEach(s => {
+          const d = document.createElement('div');
+          d.setAttribute('role', 'option');
+          d.textContent = s;
+          d.onmousedown = e => { e.preventDefault(); if (s !== 'No options') { value.textContent = s; input.value = ''; menu.hidden = true; } };
+          menu.appendChild(d);
+        });
+        menu.hidden = false;
+      }, 300);
+    }
+    input.addEventListener('focus', render);
+    input.addEventListener('input', render);
+    input.addEventListener('keydown', e => { if (e.key === 'Escape') menu.hidden = true; });
+  </script>
+</body>
+</html>

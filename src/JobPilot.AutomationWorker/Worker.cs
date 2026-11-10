@@ -17,9 +17,12 @@ namespace JobPilot.AutomationWorker;
 public sealed class Worker(
     IServiceScopeFactory scopeFactory,
     IBrowserSessionManager browserSessionManager,
-    IWorkdayAdapter workdayAdapter,
+    AdapterRegistry adapters,
     ILogger<Worker> logger) : BackgroundService
 {
+    // The adapter for the ATS of the command being processed (commands run one at a time).
+    private IApplyFormAdapter _adapter = null!;
+
     private readonly string _workerInstanceId = $"worker-{Environment.MachineName}-{Guid.NewGuid():N}";
     private DateTimeOffset _lastHeartbeat = DateTimeOffset.MinValue;
     private Guid? _activeSessionId;
@@ -83,6 +86,8 @@ public sealed class Worker(
     {
         try
         {
+            _adapter = await ResolveAdapterAsync(command.SessionId, dbContext, ct);
+
             switch (command.CommandType)
             {
                 case AutomationCommandType.StartSession:
@@ -154,7 +159,7 @@ public sealed class Worker(
             ct);
 
         // Check authentication state
-        var authState = await workdayAdapter.DetectAuthStateAsync(page, ct);
+        var authState = await _adapter.DetectAuthStateAsync(page, ct);
         if (authState == AuthState.SignInRequired)
         {
             session.SessionStatus = SessionStatus.AwaitingAuthentication;
@@ -164,7 +169,7 @@ public sealed class Worker(
             return;
         }
 
-        var stepKey = await workdayAdapter.DetectCurrentStepKeyAsync(page, ct);
+        var stepKey = await _adapter.DetectCurrentStepKeyAsync(page, ct);
         session.CurrentStepKey = stepKey;
         session.SessionStatus = SessionStatus.Inspecting;
         await dbContext.SaveChangesAsync(ct);
@@ -216,7 +221,7 @@ public sealed class Worker(
             .FirstOrDefaultAsync(s => s.SessionId == command.SessionId, ct)
             ?? throw new KeyNotFoundException($"Session {command.SessionId} not found.");
 
-        var authState = await workdayAdapter.DetectAuthStateAsync(page, ct);
+        var authState = await _adapter.DetectAuthStateAsync(page, ct);
         if (authState == AuthState.SignInRequired)
         {
             session.SessionStatus = SessionStatus.AwaitingAuthentication;
@@ -226,11 +231,11 @@ public sealed class Worker(
             return;
         }
 
-        var stepKey = await workdayAdapter.DetectCurrentStepKeyAsync(page, ct);
+        var stepKey = await _adapter.DetectCurrentStepKeyAsync(page, ct);
         session.CurrentStepKey = stepKey;
         session.SessionStatus = SessionStatus.Inspecting;
 
-        var detectedFields = await workdayAdapter.InspectFieldsAsync(page, stepKey, ct);
+        var detectedFields = await _adapter.InspectFieldsAsync(page, stepKey, ct);
 
         var (addedCount, updatedCount) = await StoreInspectionAsync(command.SessionId, stepKey, detectedFields, dbContext, ct);
 
@@ -300,14 +305,14 @@ public sealed class Worker(
         bool navigated;
         if (payload.Direction.Equals("Back", StringComparison.OrdinalIgnoreCase))
         {
-            navigated = await workdayAdapter.NavigateBackAsync(page, ct);
+            navigated = await _adapter.NavigateBackAsync(page, ct);
         }
         else
         {
-            navigated = await workdayAdapter.NavigateNextAsync(page, ct);
+            navigated = await _adapter.NavigateNextAsync(page, ct);
         }
 
-        var newStep = await workdayAdapter.DetectCurrentStepKeyAsync(page, ct);
+        var newStep = await _adapter.DetectCurrentStepKeyAsync(page, ct);
         session.CurrentStepKey = newStep;
         session.SessionStatus = SessionStatus.Inspecting;
         session.LastActivityAt = DateTimeOffset.UtcNow;
@@ -336,10 +341,10 @@ public sealed class Worker(
         session.SessionStatus = SessionStatus.WatchingForConfirmation;
         await dbContext.SaveChangesAsync(ct);
 
-        var isSubmitted = await workdayAdapter.DetectSubmissionConfirmationAsync(page, ct);
+        var isSubmitted = await _adapter.DetectSubmissionConfirmationAsync(page, ct);
         if (isSubmitted)
         {
-            var reference = await workdayAdapter.ExtractSubmissionReferenceAsync(page, ct);
+            var reference = await _adapter.ExtractSubmissionReferenceAsync(page, ct);
             session.Application.Status = ApplicationStatus.Submitted;
             session.Application.SubmissionReference = reference;
             session.Application.SubmissionConfirmedAt = DateTimeOffset.UtcNow;
@@ -478,12 +483,12 @@ public sealed class Worker(
             // SAFETY: never touch the final submit control.
             if (field.FieldIdentifier == "bottom-navigation-submit-button") continue;
 
-            var result = await workdayAdapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
+            var result = await _adapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
             if (!result.Success && result.Error?.Contains("detached", StringComparison.OrdinalIgnoreCase) == true)
             {
                 // Workday re-rendered the field mid-fill (e.g. after a neighbouring change); retry once.
                 await page.WaitForTimeoutAsync(600);
-                result = await workdayAdapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
+                result = await _adapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
             }
             if (result.Success)
             {
@@ -579,14 +584,14 @@ public sealed class Worker(
                 catch { /* SPA navigation */ }
                 await page.WaitForTimeoutAsync(1500);
 
-                if (await workdayAdapter.DetectSubmissionConfirmationAsync(page, ct))
+                if (await _adapter.DetectSubmissionConfirmationAsync(page, ct))
                 {
                     await Status(RunStates.ReadyForReview, "Workday shows this application as submitted.", SessionStatus.WatchingForConfirmation);
                     await commandService.CompleteCommandAsync(command.CommandId, "AlreadySubmitted", null, ct);
                     return;
                 }
 
-                var auth = await workdayAdapter.DetectAuthStateAsync(page, ct);
+                var auth = await _adapter.DetectAuthStateAsync(page, ct);
 
                 // ---- Sign in / create account -------------------------------------------------
                 if (auth == AuthState.SignInRequired)
@@ -605,7 +610,7 @@ public sealed class Worker(
                     }
 
                     await Status(RunStates.Running, login.AccountExists ? "Signing in." : "Signing in (or creating your account).", SessionStatus.AwaitingAuthentication);
-                    var outcome = await workdayAdapter.SignInOrCreateAccountAsync(page, login.Email, login.Password, login.AccountExists, ct);
+                    var outcome = await _adapter.SignInOrCreateAccountAsync(page, login.Email, login.Password, login.AccountExists, ct);
 
                     switch (outcome.Kind)
                     {
@@ -635,7 +640,7 @@ public sealed class Worker(
                     }
 
                     await Status(RunStates.Running, "Starting the application.");
-                    var started = await workdayAdapter.StartApplicationAsync(page, ct);
+                    var started = await _adapter.StartApplicationAsync(page, ct);
                     if (started == null)
                     {
                         await NeedsUser("No Apply button found on this page. Open the application form in the browser tab, then press Continue.");
@@ -646,9 +651,9 @@ public sealed class Worker(
                 }
 
                 // ---- A form step ------------------------------------------------------------
-                var step = await workdayAdapter.DetectCurrentStepKeyAsync(page, ct);
+                var step = await _adapter.DetectCurrentStepKeyAsync(page, ct);
 
-                if (await workdayAdapter.IsReviewStepAsync(page, step))
+                if (await _adapter.IsReviewStepAsync(page, step))
                 {
                     await Status(RunStates.ReadyForReview,
                         "Ready for your review: check the application on Workday's Review page in the browser tab and press Submit yourself.",
@@ -666,7 +671,7 @@ public sealed class Worker(
                 lastStep = step;
                 if (sameStepRepeats >= 2)
                 {
-                    var errors = await workdayAdapter.DetectValidationErrorsAsync(page, ct);
+                    var errors = await _adapter.DetectValidationErrorsAsync(page, ct);
                     await NeedsUser($"Stuck on \"{step}\". " + (errors.Count > 0
                         ? $"Workday says: {string.Join(" | ", errors.Take(5))}. Fix it in the browser tab or in JobPilot, then press Continue."
                         : "Check the browser tab, then press Continue."));
@@ -675,7 +680,7 @@ public sealed class Worker(
 
                 // Inspect
                 await Status(RunStates.Running, $"\"{step}\": reading the form.", SessionStatus.Inspecting, step);
-                var detected = await workdayAdapter.InspectFieldsAsync(page, step, ct);
+                var detected = await _adapter.InspectFieldsAsync(page, step, ct);
                 detected = await ProbeDropdownOptionsAsync(page, detected);
                 dbContext.ChangeTracker.Clear();
                 await StoreInspectionAsync(sessionId, step, detected, dbContext, ct);
@@ -689,7 +694,7 @@ public sealed class Worker(
                 if (plan.AddEntries is { Count: > 0 } && entriesAddedOnStep.Add(step ?? ""))
                 {
                     await Status(RunStates.Running, $"\"{step}\": adding work experience / education entries.");
-                    var added = await workdayAdapter.AddRepeatEntriesAsync(page, plan.AddEntries.Select(t => (t.Section, t.Wanted)).ToList());
+                    var added = await _adapter.AddRepeatEntriesAsync(page, plan.AddEntries.Select(t => (t.Section, t.Wanted)).ToList());
                     if (added > 0)
                     {
                         logger.LogInformation("Run {SessionId}: added {Count} entries on {Step}", sessionId, added, step);
@@ -716,9 +721,24 @@ public sealed class Worker(
                     return;
                 }
 
+                // Single-page forms (Greenhouse, Lever, Ashby): everything is filled; the user submits.
+                if (_adapter.IsSinglePage)
+                {
+                    await Status(RunStates.ReadyForReview,
+                        "Ready for your review: every field is filled. Check the form in the browser tab and press Submit yourself.",
+                        SessionStatus.AwaitingUser, step);
+                    await dbContext.JobApplications
+                        .Where(a => a.ApplicationId == applicationId)
+                        .ExecuteUpdateAsync(u => u
+                            .SetProperty(a => a.Status, ApplicationStatus.AwaitingUserReview)
+                            .SetProperty(a => a.LastActivityAt, DateTimeOffset.UtcNow), ct);
+                    await commandService.CompleteCommandAsync(command.CommandId, "ReadyForReview", JsonSerializer.Serialize(new { Step = step }), ct);
+                    return;
+                }
+
                 // Next step
                 await Status(RunStates.Running, $"\"{step}\": saving and continuing.", SessionStatus.Navigating);
-                if (!await workdayAdapter.NavigateNextAsync(page, ct))
+                if (!await _adapter.NavigateNextAsync(page, ct))
                 {
                     await NeedsUser($"Couldn't find \"Save and Continue\" on \"{step}\". Continue in the browser tab, then press Continue.");
                     return;
@@ -739,6 +759,16 @@ public sealed class Worker(
         }
     }
 
+    /// <summary>The adapter for the session's ATS (stored on the job's tenant when the link was added).</summary>
+    private async Task<IApplyFormAdapter> ResolveAdapterAsync(Guid sessionId, JobPilotDbContext dbContext, CancellationToken ct)
+    {
+        var atsKey = await dbContext.ApplicationSessions.AsNoTracking()
+            .Where(s => s.SessionId == sessionId)
+            .Select(s => s.Application.JobPost.Tenant.AtsKey)
+            .FirstOrDefaultAsync(ct);
+        return adapters.For(atsKey);
+    }
+
     /// <summary>Opens dropdowns without known options so the planner can pick a real option.</summary>
     private async Task<IReadOnlyList<FieldDescriptor>> ProbeDropdownOptionsAsync(IPage page, IReadOnlyList<FieldDescriptor> fields)
     {
@@ -746,9 +776,9 @@ public sealed class Worker(
         foreach (var f in fields)
         {
             var kind = f.LocatorRecipe?.RootElement.TryGetProperty("kind", out var k) == true ? k.GetString() : null;
-            if (kind == "dropdown" && f.AvailableOptions == null)
+            if (kind is "dropdown" or "sp-combobox" && f.AvailableOptions == null)
             {
-                var options = await workdayAdapter.ReadDropdownOptionsAsync(page, f);
+                var options = await _adapter.ReadDropdownOptionsAsync(page, f);
                 if (options.Count > 0)
                 {
                     var doc = JsonSerializer.SerializeToDocument(options.Select(o => new { Key = o, Label = o }));
@@ -765,7 +795,7 @@ public sealed class Worker(
     {
         try
         {
-            var details = await workdayAdapter.ReadJobDetailsAsync(page);
+            var details = await _adapter.ReadJobDetailsAsync(page);
             if (details.Title == null && details.Description == null) return;
 
             var title = details.Title is { Length: > 200 } ? details.Title[..200] : details.Title;

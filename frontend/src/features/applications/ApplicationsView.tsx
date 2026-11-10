@@ -25,6 +25,7 @@ const APP_STATUS_NAMES: ApplicationStatus[] = [
   'Discovered', 'Qualified', 'ReadyToApply', 'InProgress', 'AwaitingUserReview', 'ConfirmationPending',
   'Submitted', 'Failed', 'Rejected', 'Interview', 'Assessment', 'Offer', 'Withdrawn',
 ] as ApplicationStatus[];
+const ATS_NAMES: Record<string, string> = { workday: 'Workday', greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby' };
 const statusName = (s: ApplicationStatus | number): ApplicationStatus =>
   (typeof s === 'number' ? APP_STATUS_NAMES[s] ?? (String(s) as ApplicationStatus) : s);
 
@@ -196,10 +197,10 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>
-              Job Intake & Workday URL Normalizer
+              Job Intake
             </h2>
             <p style={{ margin: '4px 0 0 0', fontSize: '13px', color: '#64748b' }}>
-              Paste any Workday job URL. Canonical requisition ID, tenant key, and locale are detected automatically.
+              Paste a job link from Workday, Greenhouse, Lever or Ashby. The company, job ID and canonical link are detected automatically.
             </p>
           </div>
           <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
@@ -275,7 +276,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
 
         {isClassifying && (
           <div style={{ marginTop: '10px', fontSize: '12px', color: '#64748b' }}>
-            Analyzing Workday URL & extracting canonical requisition...
+            Analyzing the job link...
           </div>
         )}
 
@@ -299,7 +300,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
                 <AlertCircle size={18} style={{ color: '#d97706' }} />
               )}
               <span>
-                <strong>{classification.isSupported ? 'Supported Workday Portal:' : 'Unsupported Portal:'}</strong>{' '}
+                <strong>{classification.isSupported ? `Supported ${ATS_NAMES[classification.ats] ?? classification.ats} job:` : 'Unsupported site:'}</strong>{' '}
                 Tenant: <code>{classification.tenantKey || 'Generic'}</code> | Req ID:{' '}
                 <code>{classification.externalJobId || 'Detected'}</code>
               </span>
@@ -343,7 +344,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
             <strong style={{ fontSize: '14px', color: '#0f172a' }}>Run many applications</strong>
           </div>
           <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
-            Paste Workday job links (one per line). Each is filled step by step and stops at Workday's Review page,
+            Paste job links from Workday, Greenhouse, Lever or Ashby (one per line). Each is filled step by step and stops before submitting (Workday's Review page, or the filled form),
             in its own browser tab, for you to check and submit. Runs pause with "Needs you" for logins, email
             verification or questions JobPilot can't answer.
           </p>
@@ -410,7 +411,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
           <Briefcase size={40} style={{ color: '#94a3b8', marginBottom: '12px' }} />
           <h3 style={{ margin: '0 0 6px 0', fontSize: '16px', color: '#334155' }}>No applications in this view</h3>
           <p style={{ margin: 0, fontSize: '13px', color: '#64748b' }}>
-            Paste a Workday job URL in the box above to start an application.
+            Paste a job link (Workday, Greenhouse, Lever or Ashby) in the box above to start an application.
           </p>
         </div>
       ) : (
@@ -647,11 +648,11 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
             </div>
 
             <p style={{ fontSize: '13px', color: '#475569', lineHeight: 1.5, margin: '0 0 16px 0' }}>
-              <strong>Rule:</strong> JobPilot never clicks the final Submit button. After you personally submit the application on Workday, confirm here to mark it <strong>Submitted</strong>.
+              <strong>Rule:</strong> JobPilot never clicks the final Submit button. After you personally submit the application on the company's site, confirm here to mark it <strong>Submitted</strong>.
             </p>
 
             <div style={{ marginBottom: '20px' }}>
-              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Workday Confirmation Reference (Optional)</label>
+              <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, marginBottom: '6px' }}>Confirmation Reference (Optional)</label>
               <input
                 type="text"
                 value={submissionRef}
