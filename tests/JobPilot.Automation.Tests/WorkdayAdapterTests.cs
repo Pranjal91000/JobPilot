@@ -24,24 +24,25 @@ public class WorkdayAdapterTests : IAsyncLifetime
         });
         _page = await _browser.NewPageAsync();
 
-        // Locate fixtures/mock-workday
-        var candidate = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "..", "..", "..", "..", "..", "fixtures", "mock-workday"));
-        if (Directory.Exists(candidate))
+        // Locate fixtures/mock-workday: walk up from the test binaries (works for normal and
+        // --artifacts-path builds), then fall back to the working directory.
+        _fixturesDir = FindFixturesDir()
+            ?? throw new DirectoryNotFoundException($"Could not locate fixtures/mock-workday from {AppContext.BaseDirectory}");
+    }
+
+    private static string? FindFixturesDir()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
         {
-            _fixturesDir = candidate;
+            var candidate = Path.Combine(dir.FullName, "fixtures", "mock-workday");
+            if (Directory.Exists(candidate)) return candidate;
         }
-        else
+        foreach (var root in new[] { Directory.GetCurrentDirectory(), Path.Combine("F:", "JobPilot") })
         {
-            var alt = Path.GetFullPath("fixtures/mock-workday");
-            if (Directory.Exists(alt))
-            {
-                _fixturesDir = alt;
-            }
-            else
-            {
-                throw new DirectoryNotFoundException($"Could not locate fixtures/mock-workday from {AppContext.BaseDirectory}");
-            }
+            var candidate = Path.Combine(root, "fixtures", "mock-workday");
+            if (Directory.Exists(candidate)) return candidate;
         }
+        return null;
     }
 
     public async Task DisposeAsync()

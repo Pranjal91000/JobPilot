@@ -68,7 +68,7 @@ public sealed class AutoRunPlanner(
         var standing = reference.Where(r => r.SavedAnswerId != Guid.Empty && r.ApprovedAt != default).ToList();
 
         var context = new MappingContext(
-            AtsKey: "workday",
+            AtsKey: session.Application.JobPost?.Tenant?.AtsKey ?? "workday",
             TenantKey: session.Application.JobPost?.Tenant?.TenantKey,
             StepKey: step,
             SectionTitle: null,

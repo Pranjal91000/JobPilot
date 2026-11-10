@@ -55,7 +55,7 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
             page.SetDefaultTimeout(10000);
             _pages[sessionId] = page;
 
-            if (!string.IsNullOrWhiteSpace(url) && !page.Url.Contains("myworkdayjobs.com", StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrWhiteSpace(url) && !SameJob(page.Url, url))
             {
                 logger.LogInformation("Session {SessionId}: opening {Url}", sessionId, url);
                 await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 45000 });
@@ -150,9 +150,17 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
     private static bool SameJob(string pageUrl, string jobUrl)
     {
         if (string.IsNullOrWhiteSpace(pageUrl) || string.IsNullOrWhiteSpace(jobUrl)) return false;
-        // The job id is the last path segment of the posting URL; /apply/... pages extend it.
-        var jobId = jobUrl.Split('?')[0].TrimEnd('/').Split('/').LastOrDefault();
+        var jobId = JobIdOf(jobUrl);
         return !string.IsNullOrWhiteSpace(jobId) && pageUrl.Contains(jobId, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Greenhouse embeds carry the id in ?token= / ?gh_jid=; otherwise it's the last path segment
+    // of the posting URL (Workday req slug, Lever/Ashby uuid), which /apply pages extend.
+    private static string? JobIdOf(string url)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(url, @"[?&](token|gh_jid)=(\d+)");
+        if (m.Success) return m.Groups[2].Value;
+        return url.Split('?')[0].TrimEnd('/').Split('/').LastOrDefault();
     }
 
     public async ValueTask DisposeAsync()

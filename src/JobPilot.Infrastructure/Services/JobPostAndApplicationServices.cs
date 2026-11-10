@@ -21,13 +21,13 @@ public class JobPostService : IJobPostService
 
     public Task<UrlClassification> ClassifyUrlAsync(string url, CancellationToken ct)
     {
-        var classification = WorkdayUrlParser.Classify(url);
+        var classification = AtsUrlClassifier.Classify(url);
         return Task.FromResult(classification);
     }
 
     public async Task<(JobPostDto Post, bool Created)> FindOrCreateAsync(string url, string title, string company, CancellationToken ct)
     {
-        var classification = WorkdayUrlParser.Classify(url);
+        var classification = AtsUrlClassifier.Classify(url);
         if (!classification.IsSupported)
             throw new InvalidOperationException($"Unsupported or invalid portal URL: {url}");
 
@@ -94,7 +94,7 @@ public class JobPostService : IJobPostService
             Locale = classification.Locale,
             NormalizedUrl = classification.NormalizedUrl,
             CompanyName = string.IsNullOrWhiteSpace(company) ? tenant.TenantKey : company,
-            JobTitle = string.IsNullOrWhiteSpace(title) ? (classification.ExternalJobId ?? "Workday Position") : title,
+            JobTitle = string.IsNullOrWhiteSpace(title) ? (classification.ExternalJobId ?? $"{AtsKeys.DisplayName(classification.Ats)} Position") : title,
             DiscoveredAt = now,
             DiscoveredUrl = url,
             DiscoveredTitle = title,
@@ -142,12 +142,12 @@ public class JobApplicationService : IJobApplicationService
         if (!classification.IsSupported)
         {
             throw new InvalidOperationException(
-                "Only Workday career sites (*.myworkdayjobs.com) are supported in this version.");
+                "Supported job links: Workday (*.myworkdayjobs.com), Greenhouse (boards.greenhouse.io or ?gh_jid=), Lever (jobs.lever.co) and Ashby (jobs.ashbyhq.com).");
         }
 
         var (jobPostDto, postCreated) = await _jobPostService.FindOrCreateAsync(
             request.Url,
-            classification.ExternalJobId ?? "Workday Position",
+            classification.ExternalJobId ?? $"{AtsKeys.DisplayName(classification.Ats)} Position",
             classification.TenantKey ?? "Company",
             ct);
 
@@ -191,7 +191,9 @@ public class JobApplicationService : IJobApplicationService
             ResumeId = request.ResumeId,
             Status = ApplicationStatus.ReadyToApply,
             ReviewStatus = ReviewStatus.NotStarted,
-            ApplicationUrl = request.Url,
+            // Workday keeps the pasted link (it may point into the apply flow). Other ATSs open the
+            // normalised link: e.g. a company-site "?gh_jid=" link becomes Greenhouse's embedded form.
+            ApplicationUrl = classification.Ats == AtsKeys.Workday ? request.Url : classification.NormalizedUrl,
             CompletionPercentage = 0,
             LastActivityAt = now
         };
@@ -292,7 +294,7 @@ public class JobApplicationService : IJobApplicationService
         return new JobApplicationDto(
             app.ApplicationId,
             app.JobPostId,
-            app.JobPost?.JobTitle ?? "Workday Position",
+            app.JobPost?.JobTitle ?? "Job Position",
             app.JobPost?.CompanyName ?? "Company",
             app.ApplicationUrl,
             app.Status,

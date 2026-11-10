@@ -14,8 +14,16 @@ public sealed record FillResult(
     string? ReadBackValue,
     string? Error);
 
-public interface IWorkdayAdapter
+/// <summary>
+/// Drives one ATS's application pages. Workday is a multi-step flow with candidate accounts;
+/// Greenhouse, Lever and Ashby are single-page forms (<see cref="IsSinglePage"/>).
+/// </summary>
+public interface IApplyFormAdapter
 {
+    string AtsKey { get; }
+    /// <summary>The whole application is one form: fill it and stop for review (no Next steps).</summary>
+    bool IsSinglePage { get; }
+
     Task<AuthState> DetectAuthStateAsync(IPage page, CancellationToken ct = default);
     Task<string?> DetectCurrentStepKeyAsync(IPage page, CancellationToken ct = default);
     Task<IReadOnlyList<FieldDescriptor>> InspectFieldsAsync(IPage page, string? stepKey, CancellationToken ct = default);
@@ -33,8 +41,13 @@ public interface IWorkdayAdapter
     Task<int> AddRepeatEntriesAsync(IPage page, IReadOnlyList<(string Section, int Wanted)> targets);
 }
 
+public interface IWorkdayAdapter : IApplyFormAdapter;
+
 public sealed partial class WorkdayAdapter : IWorkdayAdapter
 {
+    public string AtsKey => "workday";
+    public bool IsSinglePage => false;
+
     // Workday navigation and submit selector constants
     private const string NextButtonSelector = "[data-automation-id='bottom-navigation-next-button'], [data-automation-id='pageFooterNextButton'], button:has-text('Save and Continue'), button:has-text('Next')";
     private const string BackButtonSelector = "[data-automation-id='bottom-navigation-back-button'], [data-automation-id='pageFooterBackButton'], a:has-text('Back'), button:has-text('Back')";
@@ -129,7 +142,12 @@ public sealed partial class WorkdayAdapter : IWorkdayAdapter
         }
 
         var json = await page.EvaluateAsync<string>(InspectScript) ?? "[]";
+        return BuildDescriptors(json, stepKey);
+    }
 
+    /// <summary>Turns the JSON produced by an inspection script into field descriptors.</summary>
+    internal static IReadOnlyList<FieldDescriptor> BuildDescriptors(string json, string? stepKey)
+    {
         var rawElements = JsonSerializer.Deserialize<List<RawElementDto>>(json, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true

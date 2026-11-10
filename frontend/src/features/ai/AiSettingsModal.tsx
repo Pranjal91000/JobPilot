@@ -192,7 +192,7 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 {isEnabled ? 'AI Semantic Mapping Enabled' : 'AI Mapping Disabled (Deterministic Only)'}
               </div>
               <div style={{ fontSize: '12px', color: '#64748b' }}>
-                When disabled, JobPilot runs 100% locally with Workday rules and exact dictionaries.
+                When disabled, JobPilot runs 100% locally with site rules and exact dictionaries.
               </div>
             </div>
             <label style={{ position: 'relative', display: 'inline-block', width: '48px', height: '26px' }}>
