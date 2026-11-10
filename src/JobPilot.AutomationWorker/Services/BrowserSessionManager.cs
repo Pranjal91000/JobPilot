@@ -51,6 +51,8 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
                        ?? context.Pages.FirstOrDefault(p => !p.IsClosed && !claimed.Contains(p) && p.Url == "about:blank")
                        ?? await context.NewPageAsync();
 
+            // Fail a stuck action in 10s instead of Playwright's default 30s.
+            page.SetDefaultTimeout(10000);
             _pages[sessionId] = page;
 
             if (!string.IsNullOrWhiteSpace(url) && !page.Url.Contains("myworkdayjobs.com", StringComparison.OrdinalIgnoreCase))

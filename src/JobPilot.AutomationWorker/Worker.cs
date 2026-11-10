@@ -479,6 +479,12 @@ public sealed class Worker(
             if (field.FieldIdentifier == "bottom-navigation-submit-button") continue;
 
             var result = await workdayAdapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
+            if (!result.Success && result.Error?.Contains("detached", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                // Workday re-rendered the field mid-fill (e.g. after a neighbouring change); retry once.
+                await page.WaitForTimeoutAsync(600);
+                result = await workdayAdapter.FillFieldAsync(page, ToDescriptor(field), req.Value, req.OptionKey, ct);
+            }
             if (result.Success)
             {
                 // A success can carry a warning (e.g. some skills Workday doesn't list).

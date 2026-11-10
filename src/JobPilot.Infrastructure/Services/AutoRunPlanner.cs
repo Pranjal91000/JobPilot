@@ -299,8 +299,8 @@ public sealed class AutoRunPlanner(
         "companyName" => e.CompanyName,
         "location" => e.Location,
         "currentlyWorkHere" => e.IsCurrent ? "true" : "false",
-        "startDate" => e.StartDate.ToString("MM/yyyy"),
-        "endDate" => e.IsCurrent ? null : e.EndDate?.ToString("MM/yyyy"),
+        "startDate" => e.StartDate.ToString("MM'/'yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        "endDate" => e.IsCurrent ? null : e.EndDate?.ToString("MM'/'yyyy", System.Globalization.CultureInfo.InvariantCulture),
         "roleDescription" => e.Responsibilities,
         _ => null
     };
@@ -313,8 +313,8 @@ public sealed class AutoRunPlanner(
         "gradeAverage" or "grade" => e.Grade,
         "firstYearAttended" => e.StartDate?.Year.ToString(),
         "lastYearAttended" => e.EndDate?.Year.ToString(),
-        "startDate" => e.StartDate?.ToString("MM/yyyy"),
-        "endDate" => e.EndDate?.ToString("MM/yyyy"),
+        "startDate" => e.StartDate?.ToString("MM'/'yyyy", System.Globalization.CultureInfo.InvariantCulture),
+        "endDate" => e.EndDate?.ToString("MM'/'yyyy", System.Globalization.CultureInfo.InvariantCulture),
         _ => null
     };
 

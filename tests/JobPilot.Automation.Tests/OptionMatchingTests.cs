@@ -47,3 +47,28 @@ public class OptionMatchingTests
         Assert.True(WorkdayAdapter.MatchScore(option, target) >= min);
     }
 }
+
+public class DateParsingTests
+{
+    [Theory]
+    [InlineData("01/2025", "01", null, "2025")]
+    [InlineData("01-2025", "01", null, "2025")]   // what en-IN formatting produced
+    [InlineData("1.2025", "01", null, "2025")]
+    [InlineData("03/15/2024", "03", "15", "2024")]
+    [InlineData("2024-03", "03", null, "2024")]
+    [InlineData("2024-03-15", "03", "15", "2024")]
+    [InlineData("2019", null, null, "2019")]
+    public void Parses_common_formats(string input, string? month, string? day, string year)
+    {
+        var (m, d, y) = WorkdayAdapter.ParseDate(input);
+        Assert.Equal(month, m);
+        Assert.Equal(day, d);
+        Assert.Equal(year, y);
+    }
+
+    [Fact]
+    public void Rejects_text()
+    {
+        Assert.Null(WorkdayAdapter.ParseDate("present").Year);
+    }
+}

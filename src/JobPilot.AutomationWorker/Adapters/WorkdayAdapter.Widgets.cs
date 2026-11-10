@@ -232,6 +232,16 @@ public sealed partial class WorkdayAdapter
         }
         """;
 
+    // Is a Workday search/list still loading?
+    private const string PromptBusyScript = """
+        () => {
+          const vis = el => !!(el && (el.offsetWidth > 0 || el.offsetHeight > 0 || (el.getClientRects && el.getClientRects().length > 0)));
+          return Array.from(document.querySelectorAll(
+            "[data-automation-id='loadingSpinner'], [data-automation-id*='Loading'], [data-automation-id*='loading'], [data-automation-id*='spinner'], [aria-busy='true']"))
+            .some(vis);
+        }
+        """;
+
     private const string SelectedItemsScript = """
         el => {
           const clean = s => (s || '').replace(/\s+/g, ' ').trim();
@@ -266,7 +276,7 @@ public sealed partial class WorkdayAdapter
             case "radio":
                 return await FillRadioAsync(page, field, target);
             case "date":
-                return await FillDateAsync(locator, target);
+                return await FillDateAsync(page, locator, target);
             case "checkboxGroup":
                 return await FillCheckboxGroupAsync(page, locator, target);
             case "checkbox":
@@ -292,9 +302,11 @@ public sealed partial class WorkdayAdapter
     }
 
     // Type-ahead and multi-select ("Type to Add Skills", "How Did You Hear About Us?", phone code...).
-    // Each item is searched separately. Items Workday doesn't offer (skills lists use their own names,
-    // e.g. "ASP.NET Core" rather than ".NET Core") are reported, but don't undo the ones that worked:
-    // a multi-select with at least one item selected counts as filled, with a warning.
+    // Each item is searched separately and only counted once Workday shows it as selected:
+    //   type -> Enter -> wait for *fresh* results (not the previous popup, not while loading)
+    //   -> click the best match -> wait until the selection actually contains it (retry the click once)
+    // Items Workday doesn't offer (it may call ".NET Core" "ASP.NET Core") are reported, but don't
+    // undo the ones that worked: a multi-select with at least one item counts as filled, with a warning.
     private async Task<FillResult> FillPromptAsync(IPage page, ILocator input, string target, bool multi, CancellationToken ct)
     {
         var items = multi ? SplitItems(target) : new List<string> { target.Trim() };
@@ -308,35 +320,49 @@ public sealed partial class WorkdayAdapter
             // Whole-word match only: "C#" is not already covered by a selected "C#.NET".
             if (before.Any(s => MatchScore(s, item) >= 80)) continue;
 
+            await input.ScrollIntoViewIfNeededAsync();
             await input.ClickAsync();
             await input.FillAsync("");
-            await input.PressSequentiallyAsync(item, new LocatorPressSequentiallyOptions { Delay = 25 });
+            var stale = await page.EvaluateAsync<string[]>(CollectOptionsScript);
+            await input.PressSequentiallyAsync(item, new LocatorPressSequentiallyOptions { Delay = 40 });
             await input.PressAsync("Enter");
 
-            var (picked, seen) = await PickOptionDetailedAsync(page, item, timeoutMs: 6000);
+            var (picked, seen) = await PickOptionDetailedAsync(page, item, timeoutMs: 10000, stale);
+            var gained = picked != null && await WaitForSelectionAsync(page, input, before, item, picked, 4000);
 
-            // Hierarchical prompts: the first click may open a category; try once more inside it.
-            if (picked != null && !await GainedSelectionAsync(input, before, item, picked))
+            if (picked != null && !gained)
             {
-                await page.WaitForTimeoutAsync(400);
-                var (inner, innerSeen) = await PickOptionDetailedAsync(page, item, timeoutMs: 2500);
-                picked = inner ?? picked;
-                if (innerSeen.Length > 0) seen = innerSeen;
+                var current = await page.EvaluateAsync<string[]>(CollectOptionsScript);
+                var again = Array.FindIndex(current, o => o == picked);
+                if (again >= 0)
+                {
+                    // Same list still showing: the click didn't register. Click it once more.
+                    await page.Locator($"[data-jp-opt='{again}']").First.ClickAsync();
+                }
+                else
+                {
+                    // The list changed: a hierarchical prompt opened a category. Pick inside it.
+                    var (inner, innerSeen) = await PickOptionDetailedAsync(page, item, timeoutMs: 4000, seen);
+                    picked = inner ?? picked;
+                    if (innerSeen.Length > 0) seen = innerSeen;
+                }
+                gained = await WaitForSelectionAsync(page, input, before, item, picked, 4000);
             }
 
-            if (!await GainedSelectionAsync(input, before, item, picked))
+            if (!gained)
             {
                 unmatched.Add(item);
                 notes.Add(picked == null
                     ? (seen.Length == 0
                         ? $"'{item}': Workday showed no results"
                         : $"'{item}': no close match among {string.Join(" / ", seen.Take(5))}")
-                    : $"'{item}': clicked '{picked}' but it wasn't added");
+                    : $"'{item}': clicked '{picked}' but Workday didn't add it");
             }
 
-            // Close the result popup so the next search reads fresh options.
+            // Close the popup and wait until it's gone, so the next search can't read old results.
             await page.Keyboard.PressAsync("Escape");
-            await page.WaitForTimeoutAsync(250);
+            for (var i = 0; i < 8 && (await page.EvaluateAsync<string[]>(CollectOptionsScript)).Length > 0; i++)
+                await page.WaitForTimeoutAsync(150);
         }
 
         var finalSelected = await input.EvaluateAsync<string[]>(SelectedItemsScript);
@@ -352,13 +378,19 @@ public sealed partial class WorkdayAdapter
         return new FillResult(false, readBack, $"{detail}. Edit the value to match an option Workday offers.");
     }
 
-    /// <summary>True if the selection grew, or now contains the item or the option that was clicked.</summary>
-    private static async Task<bool> GainedSelectionAsync(ILocator input, string[] before, string item, string? picked)
+    /// <summary>Polls until the selection grows or contains the item / clicked option.</summary>
+    private static async Task<bool> WaitForSelectionAsync(IPage page, ILocator input, string[] before, string item, string? picked, int timeoutMs)
     {
-        await Task.Delay(200);
-        var after = await input.EvaluateAsync<string[]>(SelectedItemsScript);
-        if (after.Length > before.Length) return true;
-        return after.Any(s => MatchScore(s, item) >= 80 || (picked != null && MatchScore(s, picked) >= 80));
+        var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            var after = await input.EvaluateAsync<string[]>(SelectedItemsScript);
+            if (after.Length > before.Length ||
+                after.Any(s => MatchScore(s, item) >= 80 || (picked != null && MatchScore(s, picked) >= 80)))
+                return true;
+            await page.WaitForTimeoutAsync(250);
+        }
+        return false;
     }
 
     // Workday dropdowns are buttons that open a listbox.
@@ -420,32 +452,43 @@ public sealed partial class WorkdayAdapter
             : new FillResult(false, null, $"Could not select '{labels[idx]}'.");
     }
 
-    private static async Task<FillResult> FillDateAsync(ILocator firstPart, string target)
+    // Workday dates are separate month / day / year spinbutton inputs, 8px wide and covered by a
+    // "display" div, so clicking them fails ("element is outside of the viewport"). Instead: scroll the
+    // date into view, give each part keyboard focus and type its digits, then Tab to commit.
+    private static async Task<FillResult> FillDateAsync(IPage page, ILocator firstPart, string target)
     {
-        var container = firstPart.Locator("xpath=ancestor::*[starts-with(@data-automation-id,'formField')][1]");
         var (month, day, year) = ParseDate(target);
         if (year == null)
         {
             return new FillResult(false, null, $"Could not read '{target}' as a date. Use MM/YYYY or MM/DD/YYYY.");
         }
 
+        var wrapper = firstPart.Locator("xpath=ancestor::*[@data-automation-id='dateInputWrapper'][1]");
+        if (await wrapper.CountAsync() == 0)
+            wrapper = firstPart.Locator("xpath=ancestor::*[starts-with(@data-automation-id,'formField')][1]");
+        await wrapper.ScrollIntoViewIfNeededAsync();
+
         async Task TypePart(string partId, string? value)
         {
             if (value == null) return;
-            var part = container.Locator($"input[data-automation-id^='{partId}']").First;
-            if (await part.CountAsync() == 0) return;
-            await part.ClickAsync();
-            await part.PressSequentiallyAsync(value, new LocatorPressSequentiallyOptions { Delay = 40 });
+            var input = wrapper.Locator($"input[data-automation-id='{partId}-input']").First;
+            if (await input.CountAsync() == 0) return;
+            await input.FocusAsync();
+            await page.Keyboard.TypeAsync(value, new KeyboardTypeOptions { Delay = 60 });
+            await page.WaitForTimeoutAsync(120);
         }
 
         await TypePart("dateSectionMonth", month);
         await TypePart("dateSectionDay", day);
         await TypePart("dateSectionYear", year);
+        await page.Keyboard.PressAsync("Tab"); // commit, so Workday validates and saves the value
+        await page.WaitForTimeoutAsync(200);
 
-        var parts = await container.Locator("input[data-automation-id^='dateSection']").EvaluateAllAsync<string[]>("els => els.map(e => e.value)");
+        var parts = await wrapper.Locator("input[data-automation-id^='dateSection']").EvaluateAllAsync<string[]>(
+            "els => els.map(e => e.value || (/^\\d+$/.test(e.getAttribute('aria-valuetext') || '') ? e.getAttribute('aria-valuetext') : ''))");
         var readBack = string.Join("/", parts.Where(p => !string.IsNullOrWhiteSpace(p)));
-        var ok = readBack.Contains(year);
-        return ok ? new FillResult(true, readBack, null) : new FillResult(false, readBack, $"Date shows '{readBack}' after typing.");
+        var ok = readBack.Contains(year) && (month == null || readBack.Contains(month.TrimStart('0')));
+        return ok ? new FillResult(true, readBack, null) : new FillResult(false, readBack, $"Date shows '{readBack}' after typing '{target}'.");
     }
 
     private static async Task<FillResult> FillCheckboxGroupAsync(IPage page, ILocator firstBox, string target)
@@ -483,29 +526,49 @@ public sealed partial class WorkdayAdapter
     private static async Task<string?> PickOptionAsync(IPage page, string target, int timeoutMs) =>
         (await PickOptionDetailedAsync(page, target, timeoutMs)).Picked;
 
-    /// <summary>Like <see cref="PickOptionAsync"/>, also returning the option texts that were visible.</summary>
-    private static async Task<(string? Picked, string[] Seen)> PickOptionDetailedAsync(IPage page, string target, int timeoutMs)
+    /// <summary>
+    /// Waits for search results, then clicks the best text match. Returns the clicked text (or
+    /// null) and the options that were visible. Results count as ready only when nothing is
+    /// loading, they differ from <paramref name="stale"/> (what was showing before the search),
+    /// and either one matches well or the list has stopped changing.
+    /// </summary>
+    private static async Task<(string? Picked, string[] Seen)> PickOptionDetailedAsync(IPage page, string target, int timeoutMs, string[]? stale = null)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         string[] options = [];
-        var lastCount = -1;
+        string[]? previous = null;
+        var stableReads = 0;
 
-        // Poll until results appear and stop changing (search results load asynchronously).
         while (DateTime.UtcNow < deadline)
         {
+            await page.WaitForTimeoutAsync(250);
+            if (await page.EvaluateAsync<bool>(PromptBusyScript)) { stableReads = 0; continue; }
+
             options = await page.EvaluateAsync<string[]>(CollectOptionsScript);
-            if (options.Length > 0 && options.Length == lastCount) break;
-            lastCount = options.Length;
-            await page.WaitForTimeoutAsync(300);
+            var fresh = options.Length > 0 && (stale == null || stale.Length == 0 || !options.SequenceEqual(stale));
+            if (!fresh) { previous = null; stableReads = 0; continue; }
+
+            if (options.Length == 1 && options[0].Equals("No Items.", StringComparison.OrdinalIgnoreCase))
+            {
+                if (++stableReads >= 2) break; // a definite "nothing found"
+                continue;
+            }
+
+            var best = BestMatchIndex(options, target);
+            if (best >= 0 && MatchScore(options[best], target) >= 80) break; // exact / whole-word hit
+
+            stableReads = previous != null && options.SequenceEqual(previous) ? stableReads + 1 : 0;
+            if (stableReads >= 3) break; // list settled (~750 ms unchanged)
+            previous = options;
         }
 
-        // Workday shows "No Items." when a search finds nothing.
+        // Re-tag right before clicking so the index matches the live list.
+        options = await page.EvaluateAsync<string[]>(CollectOptionsScript);
         var real = options.Where(o => !o.Equals("No Items.", StringComparison.OrdinalIgnoreCase)).ToArray();
         var idx = BestMatchIndex(options, target);
         if (idx < 0 || options[idx].Equals("No Items.", StringComparison.OrdinalIgnoreCase)) return (null, real);
 
         await page.Locator($"[data-jp-opt='{idx}']").First.ClickAsync();
-        await page.WaitForTimeoutAsync(350);
         return (options[idx], real);
     }
 
@@ -572,14 +635,14 @@ public sealed partial class WorkdayAdapter
         _ => v
     };
 
-    private static (string? Month, string? Day, string? Year) ParseDate(string value)
+    public static (string? Month, string? Day, string? Year) ParseDate(string value)
     {
         var v = value.Trim();
         var iso = Regex.Match(v, @"^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?");
         if (iso.Success)
             return (iso.Groups[2].Value.PadLeft(2, '0'), iso.Groups[3].Success ? iso.Groups[3].Value.PadLeft(2, '0') : null, iso.Groups[1].Value);
 
-        var us = Regex.Match(v, @"^(\d{1,2})/(?:(\d{1,2})/)?(\d{4})$");
+        var us = Regex.Match(v, @"^(\d{1,2})[/.\-](?:(\d{1,2})[/.\-])?(\d{4})$");
         if (us.Success)
             return (us.Groups[1].Value.PadLeft(2, '0'), us.Groups[2].Success ? us.Groups[2].Value.PadLeft(2, '0') : null, us.Groups[3].Value);
 
