@@ -26,7 +26,7 @@ public sealed class SavedAnswerMatcher : ISavedAnswerMatcher
         // 2. Try match by canonical key
         if (match == null && !string.IsNullOrWhiteSpace(field.FieldIdentifier))
         {
-            var cleanId = field.FieldIdentifier.Replace("data-automation-id=", "").Trim('"', '\'', ' ');
+            var cleanId = Regex.Replace(field.FieldIdentifier.Replace("data-automation-id=", "").Trim('"', '\'', ' '), @"#\d+$", "");
             match = savedAnswers.FirstOrDefault(a => a.CanonicalKey.Equals(cleanId, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -51,7 +51,9 @@ public sealed class SavedAnswerMatcher : ISavedAnswerMatcher
             IsSensitive: isSensitive,
             Reason: isSensitive
                 ? $"Matched sensitive saved answer '{match.CanonicalKey}'. Requires explicit per-application user confirmation."
-                : $"Matched user-approved saved answer '{match.CanonicalKey}'.");
+                : match.Scope == SavedAnswerScope.Company && !isApproved
+                    ? $"Reused from your approved answer in {match.ScopeRef} (\"{match.QuestionText}\"). Please review."
+                    : $"Matched user-approved saved answer '{match.CanonicalKey}'.");
 
         return Task.FromResult<FieldMappingResult?>(result);
     }

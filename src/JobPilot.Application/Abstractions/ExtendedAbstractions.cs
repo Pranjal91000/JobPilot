@@ -181,6 +181,7 @@ public interface IWorkdayAutomationService
     Task<CommandAccepted> InspectAsync(Guid sessionId, CancellationToken ct);
     Task<CommandAccepted> MapFieldsAsync(Guid sessionId, CancellationToken ct);
     Task<CommandAccepted> AutofillAsync(Guid sessionId, CancellationToken ct);
+    Task<CommandAccepted> StartRunAsync(Guid applicationId, CancellationToken ct);
     Task<CommandAccepted> NavigateAsync(Guid sessionId, string direction, CancellationToken ct);
     Task<ValidationReport> ValidateAsync(Guid sessionId, CancellationToken ct);
     Task<ReviewResult> ApplyReviewAsync(Guid sessionId, ReviewDecisions decisions, CancellationToken ct);

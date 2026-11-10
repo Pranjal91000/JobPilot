@@ -4,6 +4,54 @@ import { apiClient } from '../../api/client';
 import type { AiSettingsDto, UpdateAiSettingsRequest } from '../../api/types';
 import { Sparkles, Key, CheckCircle, AlertTriangle, X, Shield, RefreshCw } from 'lucide-react';
 
+// Suggested models per provider. The first entry is the default when switching provider.
+// Model names change over time; the field stays free text so any current model ID can be typed.
+const PROVIDERS: Record<string, { label: string; keyHint: string; models: { id: string; label: string }[] }> = {
+  'Google Gemini': {
+    label: 'Google Gemini',
+    keyHint: 'Key from aistudio.google.com',
+    models: [
+      { id: 'gemini-3.8-flash', label: '3.8 Flash' },
+      { id: 'gemini-3.6-flash', label: '3.6 Flash' },
+      { id: 'gemini-3.5-flash-lite', label: '3.5 Flash-Lite' },
+      { id: 'gemini-3.1-flash-lite', label: '3.1 Flash-Lite' },
+      { id: 'gemini-2.5-flash-lite', label: '2.5 Flash-Lite' },
+    ],
+  },
+  Groq: {
+    label: 'Groq (free tier, very fast)',
+    keyHint: 'Key from console.groq.com',
+    models: [
+      { id: 'llama-3.3-70b-versatile', label: 'Llama 3.3 70B' },
+      { id: 'openai/gpt-oss-120b', label: 'GPT-OSS 120B' },
+    ],
+  },
+  OpenRouter: {
+    label: 'OpenRouter (many models, some free)',
+    keyHint: 'Key from openrouter.ai',
+    models: [
+      { id: 'meta-llama/llama-3.3-70b-instruct:free', label: 'Llama 3.3 70B (free)' },
+      { id: 'openai/gpt-4o-mini', label: 'GPT-4o mini' },
+    ],
+  },
+  OpenAI: {
+    label: 'OpenAI',
+    keyHint: 'Key from platform.openai.com',
+    models: [
+      { id: 'gpt-4o-mini', label: 'GPT-4o mini' },
+      { id: 'gpt-4.1-mini', label: 'GPT-4.1 mini' },
+    ],
+  },
+  'Anthropic Claude': {
+    label: 'Anthropic Claude',
+    keyHint: 'Key from console.anthropic.com',
+    models: [
+      { id: 'claude-haiku-5-5', label: 'Haiku 5.5' },
+      { id: 'claude-sonnet-5-5', label: 'Sonnet 5.5' },
+    ],
+  },
+};
+
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -19,7 +67,7 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   });
 
   const [provider, setProvider] = useState('Google Gemini');
-  const [model, setModel] = useState('gemini-1.5-flash');
+  const [model, setModel] = useState('gemini-3.8-flash');
   const [isEnabled, setIsEnabled] = useState(false);
   const [apiKey, setApiKey] = useState('');
   const [testResult, setTestResult] = useState<{ success: boolean; message: string; latency?: number | null } | null>(null);
@@ -27,7 +75,7 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
   useEffect(() => {
     if (settings) {
       setProvider(settings.providerName || 'Google Gemini');
-      setModel(settings.defaultModel || 'gemini-1.5-flash');
+      setModel(settings.defaultModel || 'gemini-3.8-flash');
       setIsEnabled(settings.isEnabled);
     }
   }, [settings]);
@@ -184,7 +232,13 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
             </label>
             <select
               value={provider}
-              onChange={(e) => setProvider(e.target.value)}
+              onChange={(e) => {
+                const next = e.target.value;
+                setProvider(next);
+                const first = PROVIDERS[next]?.models[0];
+                if (first) setModel(first.id);
+                setTestResult(null);
+              }}
               style={{
                 width: '100%',
                 padding: '9px 12px',
@@ -195,23 +249,39 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 outline: 'none',
               }}
             >
-              <option value="Google Gemini">Google Gemini (Gemini 1.5 Flash)</option>
-              <option value="OpenAI">OpenAI (GPT-4o mini)</option>
-              <option value="Groq">Groq (Llama 3)</option>
-              <option value="OpenRouter">OpenRouter</option>
+              {Object.entries(PROVIDERS).map(([value, p]) => (
+                <option key={value} value={value}>{p.label}</option>
+              ))}
+              {!PROVIDERS[provider] && <option value={provider}>{provider}</option>}
             </select>
           </div>
 
           {/* Model Name */}
           <div style={{ marginBottom: '16px' }}>
-            <label style={{ display: 'block', fontSize: '13px', fontWeight: 600, color: '#334155', marginBottom: '6px' }}>
-              Model Name
-            </label>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <label style={{ fontSize: '13px', fontWeight: 600, color: '#334155' }}>
+                Model Name
+              </label>
+              {PROVIDERS[provider] && (
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  {PROVIDERS[provider].models.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => setModel(m.id)}
+                      style={{ fontSize: '11px', padding: '2px 6px', background: model === m.id ? '#2563eb' : '#f1f5f9', color: model === m.id ? '#fff' : '#475569', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+                    >
+                      {m.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <input
               type="text"
               value={model}
               onChange={(e) => setModel(e.target.value)}
-              placeholder="e.g. gemini-1.5-flash or gpt-4o-mini"
+              placeholder={PROVIDERS[provider]?.models[0]?.id ?? 'Model ID'}
               style={{
                 width: '100%',
                 padding: '9px 12px',
@@ -253,6 +323,17 @@ export const AiSettingsModal: React.FC<Props> = ({ isOpen, onClose }) => {
                 }}
               />
               <Key size={16} style={{ position: 'absolute', left: '12px', top: '12px', color: '#94a3b8' }} />
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '6px' }}>
+              {PROVIDERS[provider]?.keyHint}
+              {settings && settings.providerName !== provider && (
+                <span style={{ color: '#b45309' }}>
+                  {' '}— the stored key is for {settings.providerName}; enter a {provider} key.
+                </span>
+              )}
+            </div>
+            <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
+              Test Connection checks the saved settings, so save first.
             </div>
           </div>
 

@@ -24,5 +24,19 @@ public class HealthController : ControllerBase
             timestamp = DateTimeOffset.UtcNow
         });
     }
+
+    [HttpGet("health/ai-key-info")]
+    public async Task<IActionResult> GetAiKeyInfo([FromServices] JobPilot.Application.Features.Mapping.IAiSettingsService aiService, CancellationToken ct)
+    {
+        var key = await aiService.GetDecryptedApiKeyAsync(ct);
+        if (key == null) return Ok(new { hasKey = false });
+        return Ok(new
+        {
+            hasKey = true,
+            length = key.Length,
+            prefix = key.Length > 6 ? key[..6] + "..." : "short",
+            suffix = key.Length > 4 ? "..." + key[^4..] : ""
+        });
+    }
 }
 

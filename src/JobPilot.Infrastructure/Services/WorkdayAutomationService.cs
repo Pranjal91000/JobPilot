@@ -27,9 +27,11 @@ public sealed class WorkdayAutomationService(
             .FirstOrDefaultAsync(a => a.ApplicationId == applicationId, ct)
             ?? throw new KeyNotFoundException($"Application {applicationId} not found.");
 
-        // ADR-012 Single active session: complete any prior active sessions
+        // ADR-012 (revised): one active session per application. Other applications may stay open
+        // at Workday's Review page while a batch run works through the queue.
         var activeSessions = await dbContext.ApplicationSessions
-            .Where(s => s.SessionStatus != SessionStatus.Completed &&
+            .Where(s => s.ApplicationId == applicationId &&
+                        s.SessionStatus != SessionStatus.Completed &&
                         s.SessionStatus != SessionStatus.Cancelled &&
                         s.SessionStatus != SessionStatus.Failed &&
                         s.SessionStatus != SessionStatus.Interrupted)
@@ -87,8 +89,14 @@ public sealed class WorkdayAutomationService(
 
     private async Task EnsureSingleActiveSessionAsync(Guid sessionId, CancellationToken ct)
     {
+        var applicationId = await dbContext.ApplicationSessions
+            .Where(s => s.SessionId == sessionId)
+            .Select(s => s.ApplicationId)
+            .FirstOrDefaultAsync(ct);
+
         var otherActiveSessions = await dbContext.ApplicationSessions
             .Where(s => s.SessionId != sessionId &&
+                        s.ApplicationId == applicationId &&
                         s.SessionStatus != SessionStatus.Completed &&
                         s.SessionStatus != SessionStatus.Cancelled &&
                         s.SessionStatus != SessionStatus.Failed &&
@@ -144,9 +152,18 @@ public sealed class WorkdayAutomationService(
         }
 
         var profile = await profileService.GetVerifiedSnapshotAsync(ct);
-        var savedAnswers = await dbContext.SavedAnswers.ToListAsync(ct);
+        var savedAnswers = await PastAnswerReference.LoadAsync(dbContext, null, ct);
 
-        var descriptors = session.Fields.Select(f => new FieldDescriptor(
+        // Approved fields keep their value until the user edits or rejects them.
+        var approvedFieldIds = await dbContext.ApplicationAnswers
+            .Where(a => a.FieldId != null && a.IsUserApproved)
+            .Select(a => a.FieldId!.Value)
+            .ToListAsync(ct);
+
+        var descriptors = session.Fields
+            .Where(f => f.IsPresent && !approvedFieldIds.Contains(f.FieldId) &&
+                        !f.Mappings.Any(m => m.IsCurrent && m.MappingStatus == MappingStatus.Approved))
+            .Select(f => new FieldDescriptor(
             f.FieldId,
             f.FieldFingerprint,
             f.FieldIdentifier,
@@ -233,10 +250,18 @@ public sealed class WorkdayAutomationService(
             // SAFETY: Never autofill sensitive fields
             if (field.FieldIdentifier == "bottom-navigation-submit-button") continue;
 
+            // Only fill fields that are on the page currently open in the browser; fields from
+            // other steps can't be located and would just be reported as failures.
+            if (!field.IsPresent) continue;
+            if (!string.IsNullOrEmpty(session.CurrentStepKey) && !string.IsNullOrEmpty(field.StepKey) &&
+                !string.Equals(field.StepKey, session.CurrentStepKey, StringComparison.OrdinalIgnoreCase))
+                continue;
+
             string? targetValue = null;
             string? optionKey = null;
 
-            if (field.Answer != null && !string.IsNullOrWhiteSpace(field.Answer.AnswerValue))
+            var autoApproved = field.Mappings.Any(m => m.IsCurrent && m.MappingStatus == MappingStatus.AutoApproved);
+            if (field.Answer != null && (field.Answer.IsUserApproved || autoApproved) && !string.IsNullOrWhiteSpace(field.Answer.AnswerValue))
             {
                 targetValue = field.Answer.AnswerValue;
             }
@@ -263,6 +288,74 @@ public sealed class WorkdayAutomationService(
             ct);
 
         return new CommandAccepted(cmd.CommandId, sessionId);
+    }
+
+    /// <summary>
+    /// Queues an unattended run that works through the application step by step and stops at
+    /// Workday's Review page (never at Submit). Reuses the application's open session, so
+    /// "Continue" after the user resolves a blocker picks up where the run stopped.
+    /// </summary>
+    public async Task<CommandAccepted> StartRunAsync(Guid applicationId, CancellationToken ct)
+    {
+        var app = await dbContext.JobApplications
+            .Include(a => a.JobPost).ThenInclude(p => p.Tenant)
+            .FirstOrDefaultAsync(a => a.ApplicationId == applicationId, ct)
+            ?? throw new KeyNotFoundException($"Application {applicationId} not found.");
+
+        var session = await dbContext.ApplicationSessions
+            .Where(s => s.ApplicationId == applicationId &&
+                        s.SessionStatus != SessionStatus.Completed &&
+                        s.SessionStatus != SessionStatus.Cancelled &&
+                        s.SessionStatus != SessionStatus.Failed &&
+                        s.SessionStatus != SessionStatus.Interrupted)
+            .OrderByDescending(s => s.StartedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (session == null)
+        {
+            session = new ApplicationSession
+            {
+                SessionId = Guid.CreateVersion7(),
+                ApplicationId = applicationId,
+                SessionStatus = SessionStatus.Launching,
+                StartedAt = DateTimeOffset.UtcNow,
+                LastActivityAt = DateTimeOffset.UtcNow
+            };
+            dbContext.ApplicationSessions.Add(session);
+        }
+
+        // Don't queue a second run while one is waiting or in progress.
+        var pending = await dbContext.AutomationCommands
+            .Where(c => c.SessionId == session.SessionId &&
+                        c.CommandType == AutomationCommandType.RunToReview &&
+                        (c.Status == AutomationCommandStatus.Queued || c.Status == AutomationCommandStatus.Running))
+            .Select(c => c.CommandId)
+            .FirstOrDefaultAsync(ct);
+        if (pending != Guid.Empty)
+        {
+            return new CommandAccepted(pending, session.SessionId);
+        }
+
+        session.RunState = RunStates.Queued;
+        session.RunMessage = "Waiting for the worker.";
+        session.LastActivityAt = DateTimeOffset.UtcNow;
+
+        if (app.Status is ApplicationStatus.ReadyToApply or ApplicationStatus.Discovered or ApplicationStatus.Qualified)
+        {
+            app.Status = ApplicationStatus.InProgress;
+            app.LastActivityAt = DateTimeOffset.UtcNow;
+        }
+
+        await dbContext.SaveChangesAsync(ct);
+
+        var tenantKey = app.JobPost?.Tenant?.TenantKey ?? "default";
+        var cmd = await commandService.EnqueueCommandAsync(
+            session.SessionId,
+            AutomationCommandType.RunToReview,
+            new StartSessionPayload(app.ApplicationUrl, tenantKey),
+            ct);
+
+        return new CommandAccepted(cmd.CommandId, session.SessionId);
     }
 
     public async Task<CommandAccepted> NavigateAsync(Guid sessionId, string direction, CancellationToken ct)

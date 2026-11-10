@@ -228,3 +228,14 @@ input, textarea, select {
   background-color: var(--primary);
   transition: width 0.3s ease;
 }
+
+/* Rotating status icons (Loader2, RefreshCw) */
+.spin {
+  animation: jp-spin 1s linear infinite;
+}
+
+@keyframes jp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

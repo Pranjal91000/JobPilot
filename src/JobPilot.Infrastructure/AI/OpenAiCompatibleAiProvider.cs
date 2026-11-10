@@ -69,21 +69,37 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
             var endpoint = DetermineEndpoint(settings.ProviderName);
             var model = string.IsNullOrWhiteSpace(settings.DefaultModel) ? "gpt-4o-mini" : settings.DefaultModel;
 
-            var payload = new
+            var payload = new Dictionary<string, object>
             {
-                model = model,
-                temperature = (double)request.Options.Temperature,
-                max_tokens = request.Options.MaxOutputTokens,
-                response_format = new { type = "json_object" },
-                messages = new object[]
+                ["model"] = model,
+                ["temperature"] = (double)request.Options.Temperature,
+                ["max_tokens"] = request.Options.MaxOutputTokens,
+                ["messages"] = new object[]
                 {
                     new { role = "system", content = request.SystemPrompt },
                     new { role = "user", content = request.UserContentJson }
                 }
             };
 
+            // Anthropic's OpenAI-compatible endpoint doesn't honour JSON mode; the system prompt
+            // already demands JSON and the output is unwrapped from code fences before parsing.
+            if (!IsAnthropic(settings.ProviderName))
+            {
+                payload["response_format"] = new { type = "json_object" };
+            }
+
             using var httpRequest = new HttpRequestMessage(HttpMethod.Post, endpoint);
             httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+
+            if (settings.ProviderName.Contains("gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                httpRequest.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                if (!endpoint.Contains("?key="))
+                {
+                    httpRequest.RequestUri = new Uri($"{endpoint}?key={Uri.EscapeDataString(apiKey)}");
+                }
+            }
+
             httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -133,6 +149,7 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
             // Parse and validate structured output JSON locally
             try
             {
+                contentStr = StripCodeFences(contentStr);
                 var structuredDoc = JsonDocument.Parse(contentStr);
                 return new AiStructuredResponse(
                     Success: true,
@@ -160,6 +177,25 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
                     Error: $"Malformed JSON output from model: {ex.Message}");
             }
         }
+        catch (OperationCanceledException ex)
+        {
+            sw.Stop();
+            var callerCancelled = ct.IsCancellationRequested;
+            var reason = callerCancelled
+                ? $"AI request was cancelled by the caller after {sw.Elapsed.TotalSeconds:F1}s (client disconnected or request aborted)."
+                : $"AI request timed out after {sw.Elapsed.TotalSeconds:F1}s (limit {request.Options.Timeout.TotalSeconds:F0}s).";
+            _logger.LogWarning(ex, "{Reason} Provider={Provider} Model={Model}", reason, settings.ProviderName, settings.DefaultModel);
+            return new AiStructuredResponse(
+                Success: false,
+                Output: null,
+                SchemaValid: false,
+                RawText: null,
+                InputTokens: 0,
+                OutputTokens: 0,
+                Latency: sw.Elapsed,
+                Model: settings.DefaultModel,
+                Error: reason);
+        }
         catch (Exception ex)
         {
             sw.Stop();
@@ -177,12 +213,16 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
         }
     }
 
-    private static string DetermineEndpoint(string providerName)
+    internal static string DetermineEndpoint(string providerName)
     {
         var prov = providerName.ToLowerInvariant();
         if (prov.Contains("gemini"))
         {
             return "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions";
+        }
+        if (IsAnthropic(prov))
+        {
+            return "https://api.anthropic.com/v1/chat/completions";
         }
         if (prov.Contains("groq"))
         {
@@ -195,5 +235,20 @@ public sealed class OpenAiCompatibleAiProvider : IAiProvider
         // Default standard OpenAI endpoint
         return "https://api.openai.com/v1/chat/completions";
     }
-}
 
+    internal static bool IsAnthropic(string providerName) =>
+        providerName.Contains("anthropic", StringComparison.OrdinalIgnoreCase) ||
+        providerName.Contains("claude", StringComparison.OrdinalIgnoreCase);
+
+    // Some models wrap JSON in ```json ... ``` even when asked not to.
+    private static string StripCodeFences(string text)
+    {
+        var t = text.Trim();
+        if (!t.StartsWith("```")) return t;
+        var firstNewline = t.IndexOf('\n');
+        if (firstNewline < 0) return t;
+        t = t[(firstNewline + 1)..];
+        var closing = t.LastIndexOf("```", StringComparison.Ordinal);
+        return (closing >= 0 ? t[..closing] : t).Trim();
+    }
+}

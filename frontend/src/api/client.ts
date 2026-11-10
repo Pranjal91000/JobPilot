@@ -17,7 +17,19 @@ import type {
   UpdateProfileRequest,
   UrlClassification,
   ValidationReport,
+  RunStatusDto,
+  BatchRunItem,
+  WorkdayLoginDto,
 } from './types';
+
+async function failMessage(res: Response, fallback: string): Promise<string> {
+  try {
+    const text = await res.text();
+    return text && text.length < 400 ? text : fallback;
+  } catch {
+    return fallback;
+  }
+}
 
 export const apiClient = {
   async getHealth(): Promise<{ status: string; database: string }> {
@@ -177,12 +189,13 @@ export const apiClient = {
     fieldId: string,
     action: 'Approve' | 'SetValue' | 'Reject',
     value?: string,
-    optionKey?: string
+    optionKey?: string,
+    saveForReuse?: boolean
   ): Promise<{ success: boolean }> {
     const res = await fetch(`/api/applications/${applicationId}/fields/${fieldId}/decision`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action, value, optionKey }),
+      body: JSON.stringify({ action, value, optionKey, saveForReuse: !!saveForReuse }),
     });
     if (!res.ok) throw new Error('Failed to save field decision');
     return res.json();
@@ -295,6 +308,46 @@ export const apiClient = {
   async getSessionCommands(sessionId: string): Promise<AutomationCommandDto[]> {
     const res = await fetch(`/api/sessions/${sessionId}/commands`);
     if (!res.ok) throw new Error('Failed to load session commands');
+    return res.json();
+  },
+
+  // Unattended runs ("Run to Review")
+  async startRun(applicationId: string): Promise<{ commandId: string; sessionId: string }> {
+    const res = await fetch(`/api/applications/${applicationId}/run`, { method: 'POST' });
+    if (!res.ok) throw new Error(await failMessage(res, 'Failed to start the run'));
+    return res.json();
+  },
+
+  async batchRun(urls: string[]): Promise<BatchRunItem[]> {
+    const res = await fetch('/api/applications/batch-run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ urls }),
+    });
+    if (!res.ok) throw new Error(await failMessage(res, 'Failed to queue the links'));
+    return res.json();
+  },
+
+  async getRunStatuses(): Promise<RunStatusDto[]> {
+    const res = await fetch('/api/applications/run-status');
+    if (!res.ok) throw new Error('Failed to load run status');
+    return res.json();
+  },
+
+  // Workday login
+  async getWorkdayLogin(): Promise<WorkdayLoginDto> {
+    const res = await fetch('/api/settings/workday-login');
+    if (!res.ok) throw new Error('Failed to load Workday login');
+    return res.json();
+  },
+
+  async saveWorkdayLogin(email: string, password?: string): Promise<WorkdayLoginDto> {
+    const res = await fetch('/api/settings/workday-login', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password: password || null }),
+    });
+    if (!res.ok) throw new Error(await failMessage(res, 'Failed to save Workday login'));
     return res.json();
   },
 };

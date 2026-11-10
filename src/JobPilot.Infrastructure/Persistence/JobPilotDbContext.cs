@@ -54,6 +54,7 @@ public class JobPilotDbContext : DbContext
     public DbSet<ProviderSetting> ProviderSettings => Set<ProviderSetting>();
     public DbSet<UserSetting> UserSettings => Set<UserSetting>();
     public DbSet<WorkerHeartbeat> WorkerHeartbeats => Set<WorkerHeartbeat>();
+    public DbSet<WorkdayCredential> WorkdayCredentials => Set<WorkdayCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -90,6 +91,7 @@ public class JobPilotDbContext : DbContext
             modelBuilder.Entity<AutomationCommand>().HasQueryFilter(e => e.Session.Application.UserId == _currentUser.UserId);
             modelBuilder.Entity<AutomationEvent>().HasQueryFilter(e => e.Session.Application.UserId == _currentUser.UserId);
             modelBuilder.Entity<UserSetting>().HasQueryFilter(e => e.UserId == _currentUser.UserId);
+            modelBuilder.Entity<WorkdayCredential>().HasQueryFilter(e => e.UserId == _currentUser.UserId);
         }
     }
 

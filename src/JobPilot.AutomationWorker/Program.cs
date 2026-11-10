@@ -22,6 +22,16 @@ builder.Services.AddScoped<IWorkerHeartbeatService, WorkerHeartbeatService>();
 builder.Services.AddSingleton<IBrowserSessionManager, BrowserSessionManager>();
 builder.Services.AddSingleton<IWorkdayAdapter, WorkdayAdapter>();
 
+// The API holds the encryption keys (resume, AI key, Workday password) and makes the per-step
+// decisions; the worker asks it over localhost.
+var apiBaseUrl = builder.Configuration["JobPilotApi:BaseUrl"] ?? "http://localhost:5080/";
+builder.Services.AddHttpClient<JobPilotApiClient>(c =>
+{
+    c.BaseAddress = new Uri(apiBaseUrl);
+    c.Timeout = TimeSpan.FromMinutes(3); // AI mapping + drafting can take a while
+    c.DefaultRequestHeaders.Add("X-JobPilot-Worker", "1");
+});
+
 // Background Worker
 builder.Services.AddHostedService<Worker>();
 

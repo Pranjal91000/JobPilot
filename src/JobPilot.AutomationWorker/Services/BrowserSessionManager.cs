@@ -1,4 +1,3 @@
-using JobPilot.Domain.Enums;
 using Microsoft.Extensions.Logging;
 using Microsoft.Playwright;
 
@@ -11,12 +10,21 @@ public interface IBrowserSessionManager : IAsyncDisposable
     Task CloseSessionAsync(Guid sessionId, CancellationToken ct = default);
 }
 
+/// <summary>
+/// One visible Chromium window with one tab per application session.
+///
+/// Batch runs leave several applications open at Workday's Review page at the same time, each
+/// in its own tab, for the user to check and submit. This replaces the earlier one-browser-per-
+/// tenant model (ADR-006 profile isolation): Workday logins are per site (per domain) anyway, and
+/// a single shared profile keeps every site's sign-in between runs.
+/// </summary>
 public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger) : IBrowserSessionManager
 {
+    private readonly SemaphoreSlim _lock = new(1, 1);
+    private readonly Dictionary<Guid, IPage> _pages = new();
     private IPlaywright? _playwright;
-    private IBrowserContext? _browserContext;
-    private IPage? _activePage;
-    private Guid? _activeSessionId;
+    private IBrowser? _cdpBrowser;
+    private IBrowserContext? _context;
 
     public async Task<IPage> LaunchOrAttachAsync(
         Guid sessionId,
@@ -25,38 +33,104 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
         bool headless = false,
         CancellationToken ct = default)
     {
-        if (_activePage != null && _activeSessionId == sessionId && !_activePage.IsClosed)
+        await _lock.WaitAsync(ct);
+        try
         {
-            return _activePage;
-        }
+            if (_pages.TryGetValue(sessionId, out var existing) && !existing.IsClosed)
+            {
+                await existing.BringToFrontAsync();
+                return existing;
+            }
 
-        // Close any prior session to enforce single active session (ADR-012)
-        if (_browserContext != null)
+            var context = await GetContextAsync(headless);
+
+            // Reuse a tab already showing this job (e.g. the worker restarted and re-attached),
+            // else an unused blank tab, else open a new one.
+            var claimed = _pages.Values.Where(p => !p.IsClosed).ToHashSet();
+            var page = context.Pages.FirstOrDefault(p => !p.IsClosed && !claimed.Contains(p) && SameJob(p.Url, url))
+                       ?? context.Pages.FirstOrDefault(p => !p.IsClosed && !claimed.Contains(p) && p.Url == "about:blank")
+                       ?? await context.NewPageAsync();
+
+            _pages[sessionId] = page;
+
+            if (!string.IsNullOrWhiteSpace(url) && !page.Url.Contains("myworkdayjobs.com", StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("Session {SessionId}: opening {Url}", sessionId, url);
+                await page.GotoAsync(url, new PageGotoOptions { WaitUntil = WaitUntilState.DOMContentLoaded, Timeout = 45000 });
+            }
+
+            await page.BringToFrontAsync();
+            return page;
+        }
+        finally
         {
-            await CloseCurrentContextAsync();
+            _lock.Release();
+        }
+    }
+
+    public IPage? GetActivePage(Guid sessionId) =>
+        _pages.TryGetValue(sessionId, out var page) && !page.IsClosed ? page : null;
+
+    public async Task CloseSessionAsync(Guid sessionId, CancellationToken ct = default)
+    {
+        if (_pages.Remove(sessionId, out var page) && !page.IsClosed)
+        {
+            try { await page.CloseAsync(); }
+            catch (Exception ex) { logger.LogDebug(ex, "Error closing tab for session {SessionId}", sessionId); }
+        }
+    }
+
+    private async Task<IBrowserContext> GetContextAsync(bool headless)
+    {
+        if (_context != null)
+        {
+            try
+            {
+                _ = _context.Pages; // throws if the browser was closed by the user
+                if (_cdpBrowser == null || _cdpBrowser.IsConnected) return _context;
+            }
+            catch
+            {
+                // fall through and relaunch
+            }
+            _context = null;
+            _cdpBrowser = null;
+            _pages.Clear();
         }
 
         _playwright ??= await Playwright.CreateAsync();
 
-        // Local isolated directory per tenant (ADR-006)
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        var safeTenant = string.IsNullOrWhiteSpace(tenantKey) ? "default" : string.Concat(tenantKey.Split(Path.GetInvalidFileNameChars()));
-        var userProfileDir = Path.Combine(appData, "JobPilot", "browser-profiles", safeTenant);
-        Directory.CreateDirectory(userProfileDir);
+        // A browser left running with the debugging port (worker restarted): attach to it.
+        try
+        {
+            _cdpBrowser = await _playwright.Chromium.ConnectOverCDPAsync("http://localhost:9222", new BrowserTypeConnectOverCDPOptions { Timeout = 2000 });
+            if (_cdpBrowser.Contexts.Count > 0)
+            {
+                logger.LogInformation("Attached to the running Chromium on port 9222");
+                _context = _cdpBrowser.Contexts[0];
+                return _context;
+            }
+        }
+        catch
+        {
+            _cdpBrowser = null;
+        }
 
-        logger.LogInformation("Launching Chromium session {SessionId} with profile at {Dir} (Headless: {Headless})",
-            sessionId, userProfileDir, headless);
+        var appData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var profileDir = Path.Combine(appData, "JobPilot", "browser-profiles", "shared");
+        Directory.CreateDirectory(profileDir);
 
         var options = new BrowserTypeLaunchPersistentContextOptions
         {
             Headless = headless,
-            ViewportSize = new ViewportSize { Width = 1280, Height = 900 },
+            ViewportSize = ViewportSize.NoViewport,
             AcceptDownloads = true,
             Args = new[]
             {
                 "--no-sandbox",
                 "--disable-blink-features=AutomationControlled",
-                "--start-maximized"
+                "--start-maximized",
+                "--remote-debugging-port=9222"
             }
         };
 
@@ -66,79 +140,33 @@ public sealed class BrowserSessionManager(ILogger<BrowserSessionManager> logger)
             options.ExecutablePath = bundledExe;
         }
 
-        _browserContext = await _playwright.Chromium.LaunchPersistentContextAsync(userProfileDir, options);
-
-        // Use existing page or create new
-        _activePage = _browserContext.Pages.Count > 0
-            ? _browserContext.Pages[0]
-            : await _browserContext.NewPageAsync();
-
-        _activeSessionId = sessionId;
-
-        if (!string.IsNullOrWhiteSpace(url))
-        {
-            logger.LogInformation("Navigating to {Url}", url);
-            await _activePage.GotoAsync(url, new PageGotoOptions
-            {
-                WaitUntil = WaitUntilState.DOMContentLoaded,
-                Timeout = 30000
-            });
-        }
-
-        return _activePage;
+        logger.LogInformation("Launching Chromium with shared profile at {Dir}", profileDir);
+        _context = await _playwright.Chromium.LaunchPersistentContextAsync(profileDir, options);
+        return _context;
     }
 
-    public IPage? GetActivePage(Guid sessionId)
+    private static bool SameJob(string pageUrl, string jobUrl)
     {
-        if (_activeSessionId == sessionId && _activePage != null && !_activePage.IsClosed)
-        {
-            return _activePage;
-        }
-        return null;
-    }
-
-    public async Task CloseSessionAsync(Guid sessionId, CancellationToken ct = default)
-    {
-        if (_activeSessionId == sessionId)
-        {
-            await CloseCurrentContextAsync();
-        }
-    }
-
-    private async Task CloseCurrentContextAsync()
-    {
-        try
-        {
-            if (_activePage != null && !_activePage.IsClosed)
-            {
-                await _activePage.CloseAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Error closing page");
-        }
-
-        try
-        {
-            if (_browserContext != null)
-            {
-                await _browserContext.CloseAsync();
-            }
-        }
-        catch (Exception ex)
-        {
-            logger.LogDebug(ex, "Error closing browser context");
-        }
-
-        _activePage = null;
-        _browserContext = null;
-        _activeSessionId = null;
+        if (string.IsNullOrWhiteSpace(pageUrl) || string.IsNullOrWhiteSpace(jobUrl)) return false;
+        // The job id is the last path segment of the posting URL; /apply/... pages extend it.
+        var jobId = jobUrl.Split('?')[0].TrimEnd('/').Split('/').LastOrDefault();
+        return !string.IsNullOrWhiteSpace(jobId) && pageUrl.Contains(jobId, StringComparison.OrdinalIgnoreCase);
     }
 
     public async ValueTask DisposeAsync()
     {
-        await CloseCurrentContextAsync();
+        try
+        {
+            if (_cdpBrowser != null) await _cdpBrowser.CloseAsync();
+            else if (_context != null) await _context.CloseAsync();
+        }
+        catch (Exception ex)
+        {
+            logger.LogDebug(ex, "Error closing browser");
+        }
+        _pages.Clear();
+        _context = null;
+        _cdpBrowser = null;
         _playwright?.Dispose();
         _playwright = null;
     }

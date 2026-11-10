@@ -36,7 +36,39 @@ public sealed class AdapterRuleMapper : IAdapterRuleMapper
             ["notice-period"] = ("Preferences.NoticePeriodDays", 0.98m),
             ["experience-years"] = ("Employment.TotalExperienceYears", 0.98m),
             ["current-company"] = ("Employment.Current.CompanyName", 0.98m),
-            ["salary-expectation"] = ("Compensation.ExpectedSalary", 0.95m)
+            ["salary-expectation"] = ("Compensation.ExpectedSalary", 0.95m),
+            ["resume"] = ("Documents.Resume", 0.99m),
+            ["file-upload-input"] = ("Documents.Resume", 0.98m),
+            ["file-upload-input-ref"] = ("Documents.Resume", 0.98m),
+            ["file-upload-input-ref#2"] = ("Documents.Resume", 0.95m),
+            ["file-upload"] = ("Documents.Resume", 0.98m),
+            ["fileUpload"] = ("Documents.Resume", 0.98m),
+            ["dropZone"] = ("Documents.Resume", 0.98m),
+            ["attachment"] = ("Documents.Resume", 0.98m),
+            ["jobTitle"] = ("Employment.Current.JobTitle", 0.98m),
+            ["title"] = ("Employment.Current.JobTitle", 0.95m),
+            ["workExperience-jobTitle"] = ("Employment.Current.JobTitle", 0.99m),
+            ["company"] = ("Employment.Current.CompanyName", 0.98m),
+            ["companyName"] = ("Employment.Current.CompanyName", 0.99m),
+            ["employer"] = ("Employment.Current.CompanyName", 0.98m),
+            ["workExperience-company"] = ("Employment.Current.CompanyName", 0.99m),
+            ["workExperience-location"] = ("Employment.Current.Location", 0.98m),
+            ["workExperience-startDate"] = ("Employment.Current.StartDate", 0.98m),
+            ["workExperience-endDate"] = ("Employment.Current.EndDate", 0.98m),
+            ["workExperience-description"] = ("Employment.Current.Description", 0.98m),
+            ["roleDescription"] = ("Employment.Current.Description", 0.99m),
+            ["linkedInAccount"] = ("Links.LinkedIn", 0.98m),
+            ["school"] = ("Education.Highest.School", 0.98m),
+            ["schoolName"] = ("Education.Highest.School", 0.98m),
+            ["school-or-university"] = ("Education.Highest.School", 0.98m),
+            ["education-school"] = ("Education.Highest.School", 0.99m),
+            ["degree"] = ("Education.Highest.Degree", 0.98m),
+            ["education-degree"] = ("Education.Highest.Degree", 0.99m),
+            ["fieldOfStudy"] = ("Education.Highest.FieldOfStudy", 0.98m),
+            ["field-of-study"] = ("Education.Highest.FieldOfStudy", 0.98m),
+            ["education-fieldOfStudy"] = ("Education.Highest.FieldOfStudy", 0.99m),
+            ["skills"] = ("Skills.All", 0.95m),
+            ["skillsPrompt"] = ("Skills.All", 0.95m)
         };
 
     public FieldMappingResult? TryMap(FieldDescriptor field, VerifiedProfileSnapshot profile, MappingContext context)
@@ -50,11 +82,15 @@ public sealed class AdapterRuleMapper : IAdapterRuleMapper
         var cleanId = identifier.Replace("data-automation-id=", "").Trim('"', '\'', ' ');
         if (!WorkdayRules.TryGetValue(cleanId, out var rule))
         {
-            // Try strip common Workday prefix
-            var idx = cleanId.LastIndexOf('_');
+            // Try strip common Workday prefix (handles underscore and hyphen/double-hyphen like name--legalName--firstName)
+            var idx = Math.Max(cleanId.LastIndexOf('_'), cleanId.LastIndexOf('-'));
             if (idx >= 0 && WorkdayRules.TryGetValue(cleanId[(idx + 1)..], out rule))
             {
                 // matched suffix
+            }
+            else if (field.Type == FieldType.FileUpload)
+            {
+                rule = ("Documents.Resume", 0.98m);
             }
             else
             {

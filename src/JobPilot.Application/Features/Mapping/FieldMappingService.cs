@@ -197,7 +197,7 @@ Rules:
                 SystemPrompt: systemPrompt,
                 UserContentJson: userJson,
                 OutputSchema: JsonDocument.Parse("{}"),
-                Options: new AiCallOptions(0m, 1000, TimeSpan.FromSeconds(25)));
+                Options: new AiCallOptions(0m, 4096, TimeSpan.FromSeconds(90)));
 
             var resp = await _aiProvider.CompleteStructuredAsync(req, ct);
 

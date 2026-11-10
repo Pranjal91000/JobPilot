@@ -195,6 +195,8 @@ public class UserProfileService : IUserProfileService
             await SetVerificationAsync("Address.Line1", now, ct);
         if (!string.IsNullOrWhiteSpace(profile.City))
             await SetVerificationAsync("Address.City", now, ct);
+        if (!string.IsNullOrWhiteSpace(profile.PostalCode))
+            await SetVerificationAsync("Address.PostalCode", now, ct);
         if (!string.IsNullOrWhiteSpace(profile.CountryCode))
             await SetVerificationAsync("Address.Country", now, ct);
         if (profile.NoticePeriodDays.HasValue)
@@ -294,6 +296,9 @@ public class UserProfileService : IUserProfileService
         if (verifiedSet.Contains("Address.City") && !string.IsNullOrWhiteSpace(profile.City))
             verifiedFacts["Address.City"] = profile.City;
 
+        if (verifiedSet.Contains("Address.PostalCode") && !string.IsNullOrWhiteSpace(profile.PostalCode))
+            verifiedFacts["Address.PostalCode"] = profile.PostalCode;
+
         if (verifiedSet.Contains("Address.Country") && !string.IsNullOrWhiteSpace(profile.CountryCode))
             verifiedFacts["Address.Country"] = profile.CountryCode;
 
@@ -307,6 +312,19 @@ public class UserProfileService : IUserProfileService
             .ToListAsync(ct);
 
         verifiedFacts["EmploymentHistories"] = verifiedEmps;
+        if (verifiedEmps.Count > 0)
+        {
+            var cur = verifiedEmps.FirstOrDefault(e => e.IsCurrent) ?? verifiedEmps[0];
+            verifiedFacts["Employment.Current.JobTitle"] = cur.JobTitle;
+            verifiedFacts["Employment.Current.CompanyName"] = cur.CompanyName;
+            if (!string.IsNullOrWhiteSpace(cur.Location))
+                verifiedFacts["Employment.Current.Location"] = cur.Location;
+            verifiedFacts["Employment.Current.StartDate"] = cur.StartDate.ToString("yyyy-MM-dd");
+            if (cur.EndDate.HasValue)
+                verifiedFacts["Employment.Current.EndDate"] = cur.EndDate.Value.ToString("yyyy-MM-dd");
+            if (!string.IsNullOrWhiteSpace(cur.Responsibilities))
+                verifiedFacts["Employment.Current.Description"] = cur.Responsibilities;
+        }
 
         // Verified Educations
         var verifiedEdus = await _db.Educations
@@ -315,6 +333,20 @@ public class UserProfileService : IUserProfileService
             .ToListAsync(ct);
 
         verifiedFacts["Educations"] = verifiedEdus;
+        if (verifiedEdus.Count > 0)
+        {
+            var edu = verifiedEdus[0];
+            verifiedFacts["Education.Highest.School"] = edu.Institution;
+            verifiedFacts["Education.Highest.Degree"] = edu.Degree;
+            if (!string.IsNullOrWhiteSpace(edu.Specialization))
+                verifiedFacts["Education.Highest.FieldOfStudy"] = edu.Specialization;
+            if (edu.StartDate.HasValue)
+                verifiedFacts["Education.Highest.StartDate"] = edu.StartDate.Value.ToString("yyyy-MM-dd");
+            if (edu.EndDate.HasValue)
+                verifiedFacts["Education.Highest.EndDate"] = edu.EndDate.Value.ToString("yyyy-MM-dd");
+            if (!string.IsNullOrWhiteSpace(edu.Grade))
+                verifiedFacts["Education.Highest.Grade"] = edu.Grade;
+        }
 
         // Verified Skills
         var verifiedSkills = await _db.Skills
@@ -323,6 +355,37 @@ public class UserProfileService : IUserProfileService
             .ToListAsync(ct);
 
         verifiedFacts["Skills"] = verifiedSkills;
+        if (verifiedSkills.Count > 0)
+        {
+            verifiedFacts["Skills.All"] = string.Join(", ", verifiedSkills.Select(s => s.SkillName));
+        }
+
+        // Default Active Resume for File Uploads
+        var defaultResume = await _db.Resumes
+            .Where(r => r.UserId == _currentUser.UserId && r.IsDefault && r.IsActive && r.DeletedAt == null)
+            .OrderByDescending(r => r.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+
+        if (defaultResume != null)
+        {
+            try
+            {
+                var tempDir = Path.Combine(Path.GetTempPath(), "JobPilot", "resumes");
+                Directory.CreateDirectory(tempDir);
+                var tempFile = Path.Combine(tempDir, defaultResume.FileName);
+                if (File.Exists(defaultResume.StorageReference))
+                {
+                    var encryptedBytes = await File.ReadAllBytesAsync(defaultResume.StorageReference, ct);
+                    var plainBytes = _protector.Unprotect(encryptedBytes);
+                    await File.WriteAllBytesAsync(tempFile, plainBytes, ct);
+                    verifiedFacts["Documents.Resume"] = tempFile;
+                }
+            }
+            catch
+            {
+                // Resume preparation failure ignored for fallback
+            }
+        }
 
         return new VerifiedProfileSnapshot(
             profile.UserId,

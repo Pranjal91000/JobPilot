@@ -146,6 +146,11 @@ public sealed class ApplicationSession : AuditableEntity
     public string? FailureReason { get; set; }
     public string? WorkerInstanceId { get; set; }
 
+    /// <summary>Unattended "run to review" state; see <see cref="RunStates"/>. Null when never run.</summary>
+    public string? RunState { get; set; }
+    /// <summary>Human-readable progress or the reason the run needs the user.</summary>
+    public string? RunMessage { get; set; }
+
     public JobApplication Application { get; set; } = null!;
     public ICollection<ApplicationField> Fields { get; set; } = new List<ApplicationField>();
     public ICollection<AutomationEvent> Events { get; set; } = new List<AutomationEvent>();
@@ -312,3 +317,19 @@ public sealed class WorkerHeartbeat
     public string? Status { get; set; }
 }
 
+/// <summary>
+/// Login used to sign in to (or create) a candidate account on a Workday career site.
+/// TenantKey "*" is the default login used for any site without its own entry.
+/// The password is encrypted with the API's data-protection keys.
+/// </summary>
+public sealed class WorkdayCredential : AuditableEntity
+{
+    public Guid CredentialId { get; set; } = Guid.CreateVersion7();
+    public Guid UserId { get; set; }
+    public string TenantKey { get; set; } = "*";
+    public string Email { get; set; } = string.Empty;
+    public string PasswordEnc { get; set; } = string.Empty;
+    /// <summary>True once JobPilot (or the user) created/used an account on this tenant.</summary>
+    public bool AccountExists { get; set; }
+    public DateTimeOffset? LastUsedAt { get; set; }
+}

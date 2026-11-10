@@ -122,9 +122,7 @@ public sealed class AiSettingsService : IAiSettingsService
 
         try
         {
-            var endpoint = settings.ProviderName.Contains("gemini", StringComparison.OrdinalIgnoreCase)
-                ? "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions"
-                : "https://api.openai.com/v1/chat/completions";
+            var endpoint = JobPilot.Infrastructure.AI.OpenAiCompatibleAiProvider.DetermineEndpoint(settings.ProviderName);
 
             var payload = new
             {
@@ -138,6 +136,16 @@ public sealed class AiSettingsService : IAiSettingsService
 
             using var req = new HttpRequestMessage(HttpMethod.Post, endpoint);
             req.Headers.Authorization = new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", apiKey);
+
+            if (settings.ProviderName.Contains("gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                req.Headers.TryAddWithoutValidation("x-goog-api-key", apiKey);
+                if (!endpoint.Contains("?key="))
+                {
+                    req.RequestUri = new Uri($"{endpoint}?key={Uri.EscapeDataString(apiKey)}");
+                }
+            }
+
             req.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(15));
@@ -150,7 +158,7 @@ public sealed class AiSettingsService : IAiSettingsService
             }
 
             var errBody = await resp.Content.ReadAsStringAsync(ct);
-            return new TestAiConnectionResponse(false, $"Connection failed with HTTP {(int)resp.StatusCode}: {resp.ReasonPhrase}", (int)sw.ElapsedMilliseconds);
+            return new TestAiConnectionResponse(false, $"Connection failed with HTTP {(int)resp.StatusCode}: {resp.ReasonPhrase} - {errBody}", (int)sw.ElapsedMilliseconds);
         }
         catch (Exception ex)
         {

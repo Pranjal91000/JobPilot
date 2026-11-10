@@ -13,7 +13,20 @@ import {
   Filter,
   Sparkles,
   ShieldCheck,
+  PlayCircle,
+  KeyRound,
+  ListPlus,
 } from 'lucide-react';
+import { RunBadge, useRunStatuses, isRunBusy } from '../automation/RunStatus';
+import { WorkdayLoginModal } from '../automation/WorkdayLoginModal';
+
+// The API returns application statuses as numbers; map them to the names the UI uses.
+const APP_STATUS_NAMES: ApplicationStatus[] = [
+  'Discovered', 'Qualified', 'ReadyToApply', 'InProgress', 'AwaitingUserReview', 'ConfirmationPending',
+  'Submitted', 'Failed', 'Rejected', 'Interview', 'Assessment', 'Offer', 'Withdrawn',
+] as ApplicationStatus[];
+const statusName = (s: ApplicationStatus | number): ApplicationStatus =>
+  (typeof s === 'number' ? APP_STATUS_NAMES[s] ?? (String(s) as ApplicationStatus) : s);
 
 interface Props {
   onSelectApplication: (applicationId: string) => void;
@@ -28,6 +41,11 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
   const [isClassifying, setIsClassifying] = useState(false);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('All');
+  const [batchText, setBatchText] = useState('');
+  const [batchErrors, setBatchErrors] = useState<string[]>([]);
+  const [showLogin, setShowLogin] = useState(false);
+  const { data: runStatuses = [] } = useRunStatuses();
+  const runByApp = new Map(runStatuses.map((r) => [r.applicationId, r]));
 
   // Status transition modal state
   const [transitionApp, setTransitionApp] = useState<JobApplicationSummaryDto | null>(null);
@@ -110,6 +128,26 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
     },
   });
 
+  const batchMutation = useMutation({
+    mutationFn: (urls: string[]) => apiClient.batchRun(urls),
+    onSuccess: (items) => {
+      queryClient.invalidateQueries({ queryKey: ['applications'] });
+      queryClient.invalidateQueries({ queryKey: ['run-status'] });
+      const failed = items.filter((i) => i.error);
+      setBatchErrors(failed.map((i) => `${i.url}: ${i.error}`));
+      if (failed.length === 0) setBatchText('');
+    },
+    onError: (err: any) => setBatchErrors([err.message || 'Failed to queue the links']),
+  });
+
+  const runMutation = useMutation({
+    mutationFn: (applicationId: string) => apiClient.startRun(applicationId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['run-status'] }),
+    onError: (err: any) => alert(err.message || 'Failed to start the run'),
+  });
+
+  const batchUrls = batchText.split(/[\s,]+/).map((u) => u.trim()).filter((u) => u.startsWith('http'));
+
   const handleIntakeSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!urlInput.trim()) return;
@@ -118,7 +156,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
 
   const filteredApps = applications.filter((app) => {
     if (statusFilter === 'All') return true;
-    return app.status === statusFilter;
+    return statusName(app.status) === statusFilter;
   });
 
   const getStatusColor = (status: ApplicationStatus) => {
@@ -155,7 +193,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
         boxShadow: '0 4px 6px -1px rgba(0,0,0,0.05)',
         marginBottom: '28px',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px', marginBottom: '16px' }}>
           <div>
             <h2 style={{ margin: 0, fontSize: '18px', fontWeight: 600, color: '#0f172a' }}>
               Job Intake & Workday URL Normalizer
@@ -164,6 +202,7 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
               Paste any Workday job URL. Canonical requisition ID, tenant key, and locale are detected automatically.
             </p>
           </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
             onClick={onOpenAiSettings}
             style={{
@@ -183,6 +222,14 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
             <Sparkles size={14} style={{ color: '#2563eb' }} />
             Configure AI Provider
           </button>
+          <button
+            onClick={() => setShowLogin(true)}
+            style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', borderRadius: '8px', border: '1px solid #cbd5e1', background: '#f8fafc', fontSize: '12px', fontWeight: 500, color: '#334155', cursor: 'pointer' }}
+          >
+            <KeyRound size={14} style={{ color: '#2563eb' }} />
+            Workday login
+          </button>
+          </div>
         </div>
 
         <form onSubmit={handleIntakeSubmit} style={{ display: 'flex', gap: '12px' }}>
@@ -288,7 +335,45 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
             <span>{duplicateWarning}</span>
           </div>
         )}
+
+        {/* Batch: paste many links, each runs unattended to Workday's Review page */}
+        <div style={{ marginTop: '20px', borderTop: '1px solid #f1f5f9', paddingTop: '18px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+            <ListPlus size={16} style={{ color: '#2563eb' }} />
+            <strong style={{ fontSize: '14px', color: '#0f172a' }}>Run many applications</strong>
+          </div>
+          <p style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>
+            Paste Workday job links (one per line). Each is filled step by step and stops at Workday's Review page,
+            in its own browser tab, for you to check and submit. Runs pause with "Needs you" for logins, email
+            verification or questions JobPilot can't answer.
+          </p>
+          <textarea
+            value={batchText}
+            onChange={(e) => setBatchText(e.target.value)}
+            rows={4}
+            placeholder={'https://company.wd5.myworkdayjobs.com/en-US/careers/job/...\nhttps://another.wd1.myworkdayjobs.com/...'}
+            style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '13px', fontFamily: 'inherit', resize: 'vertical' }}
+          />
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+            <span style={{ fontSize: '12px', color: '#64748b' }}>{batchUrls.length} link{batchUrls.length === 1 ? '' : 's'}</span>
+            <button
+              onClick={() => batchMutation.mutate(batchUrls)}
+              disabled={batchUrls.length === 0 || batchMutation.isPending}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '9px 16px', borderRadius: '8px', border: 'none', background: batchUrls.length ? '#16a34a' : '#94a3b8', color: '#fff', fontWeight: 600, fontSize: '13px', cursor: batchUrls.length ? 'pointer' : 'not-allowed' }}
+            >
+              <PlayCircle size={15} />
+              {batchMutation.isPending ? 'Queuing...' : 'Add & run to review'}
+            </button>
+          </div>
+          {batchErrors.length > 0 && (
+            <ul style={{ marginTop: '8px', paddingLeft: '18px', fontSize: '12px', color: '#b91c1c' }}>
+              {batchErrors.map((e) => <li key={e} style={{ overflowWrap: 'anywhere' }}>{e}</li>)}
+            </ul>
+          )}
+        </div>
       </div>
+
+      <WorkdayLoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} />
 
       {/* Filter Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', alignItems: 'center' }}>
@@ -331,7 +416,10 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(360px, 1fr))', gap: '20px' }}>
           {filteredApps.map((app) => {
-            const statusStyle = getStatusColor(app.status);
+            const appStatus = statusName(app.status);
+            const statusStyle = getStatusColor(appStatus);
+            const run = runByApp.get(app.applicationId);
+            const busy = isRunBusy(run);
             return (
               <div
                 key={app.applicationId}
@@ -357,8 +445,9 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
                       color: statusStyle.text,
                       border: `1px solid ${statusStyle.border}`,
                     }}>
-                      {app.status}
+                      {appStatus}
                     </span>
+                    <RunBadge status={run} />
                     <span style={{ fontSize: '12px', color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px' }}>
                       <Clock size={12} />
                       {new Date(app.lastActivityAt).toLocaleDateString()}
@@ -371,6 +460,16 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
                   <div style={{ fontSize: '14px', color: '#475569', marginBottom: '16px' }}>
                     {app.companyName}
                   </div>
+
+                  {run?.runMessage && (run.runState === 'NeedsUser' || run.runState === 'ReadyForReview' || run.runState === 'Failed' || busy) && (
+                    <div style={{
+                      fontSize: '12px', marginBottom: '14px', padding: '8px 10px', borderRadius: '8px', overflowWrap: 'anywhere',
+                      background: run.runState === 'NeedsUser' ? '#fffbeb' : run.runState === 'ReadyForReview' ? '#f0fdf4' : run.runState === 'Failed' ? '#fef2f2' : '#f8fafc',
+                      color: '#334155',
+                    }}>
+                      {run.runMessage}
+                    </div>
+                  )}
 
                   {/* Completion Bar */}
                   <div style={{ marginBottom: '18px' }}>
@@ -408,7 +507,21 @@ export const ApplicationsView: React.FC<Props> = ({ onSelectApplication, onOpenA
                     >
                       Status
                     </button>
-                    {app.status !== 'Submitted' && (
+                    {appStatus !== 'Submitted' && (
+                      <button
+                        onClick={() => runMutation.mutate(app.applicationId)}
+                        disabled={busy || runMutation.isPending}
+                        title="Fill this application step by step up to Workday's Review page"
+                        style={{
+                          padding: '6px 10px', fontSize: '12px', borderRadius: '6px', border: '1px solid #bfdbfe',
+                          background: busy ? '#f1f5f9' : '#eff6ff', color: '#1d4ed8', cursor: busy ? 'not-allowed' : 'pointer',
+                          display: 'flex', alignItems: 'center', gap: '4px',
+                        }}
+                      >
+                        <PlayCircle size={12} /> {run?.runState === 'NeedsUser' || run?.runState === 'Failed' ? 'Continue' : busy ? 'Running...' : 'Run to Review'}
+                      </button>
+                    )}
+                    {appStatus !== 'Submitted' && (
                       <button
                         onClick={() => setConfirmApp(app)}
                         style={{

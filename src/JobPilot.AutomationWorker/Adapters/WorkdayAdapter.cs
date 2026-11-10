@@ -25,27 +25,38 @@ public interface IWorkdayAdapter
     Task<IReadOnlyList<string>> DetectValidationErrorsAsync(IPage page, CancellationToken ct = default);
     Task<bool> DetectSubmissionConfirmationAsync(IPage page, CancellationToken ct = default);
     Task<string?> ExtractSubmissionReferenceAsync(IPage page, CancellationToken ct = default);
+    Task<JobDetails> ReadJobDetailsAsync(IPage page);
+    Task<string?> StartApplicationAsync(IPage page, CancellationToken ct = default);
+    Task<AuthOutcome> SignInOrCreateAccountAsync(IPage page, string email, string password, bool accountKnownToExist, CancellationToken ct = default);
+    Task<bool> IsReviewStepAsync(IPage page, string? stepKey);
+    Task<IReadOnlyList<string>> ReadDropdownOptionsAsync(IPage page, FieldDescriptor field);
+    Task<int> AddRepeatEntriesAsync(IPage page, IReadOnlyList<(string Section, int Wanted)> targets);
 }
 
-public sealed class WorkdayAdapter : IWorkdayAdapter
+public sealed partial class WorkdayAdapter : IWorkdayAdapter
 {
     // Workday navigation and submit selector constants
-    private const string NextButtonSelector = "[data-automation-id='bottom-navigation-next-button'], button:has-text('Save and Continue'), button:has-text('Next')";
-    private const string BackButtonSelector = "[data-automation-id='bottom-navigation-back-button'], a:has-text('Back')";
+    private const string NextButtonSelector = "[data-automation-id='bottom-navigation-next-button'], [data-automation-id='pageFooterNextButton'], button:has-text('Save and Continue'), button:has-text('Next')";
+    private const string BackButtonSelector = "[data-automation-id='bottom-navigation-back-button'], [data-automation-id='pageFooterBackButton'], a:has-text('Back'), button:has-text('Back')";
     public const string FinalSubmitSelector = "[data-automation-id='bottom-navigation-submit-button']";
 
     public async Task<AuthState> DetectAuthStateAsync(IPage page, CancellationToken ct = default)
     {
-        // Check for sign-in or password inputs
-        var hasPasswordInput = await page.Locator("input[type='password']").CountAsync() > 0;
-        var hasSignInForm = await page.Locator("[data-automation-id='signInPage'], form#authForm, #input-password").CountAsync() > 0;
+        var isAuth = await page.EvaluateAsync<bool>(@"() => {
+            const hasPassword = !!document.querySelector('input[type=""password""]');
+            const hasSignIn = !!document.querySelector('[data-automation-id=""signInPage""], [data-automation-id=""createAccountCheckbox""], form#authForm, #input-password');
+            return hasPassword || hasSignIn;
+        }");
 
-        if (hasPasswordInput || hasSignInForm)
+        if (isAuth)
         {
             return AuthState.SignInRequired;
         }
 
-        var inApplyFlow = await page.Locator("[data-automation-id='applicationFlow'], [data-automation-id='step-header'], [data-automation-id='bottom-navigation-next-button']").CountAsync() > 0;
+        var inApplyFlow = await page.EvaluateAsync<bool>(@"() => {
+            return !!document.querySelector('[data-automation-id=""applicationFlow""], [data-automation-id=""step-header""], [data-automation-id=""bottom-navigation-next-button""], [data-automation-id=""pageFooterNextButton""], [data-automation-id=""progressBarActiveStep""]');
+        }");
+
         if (inApplyFlow)
         {
             return AuthState.InApplyFlow;
@@ -56,15 +67,46 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
 
     public async Task<string?> DetectCurrentStepKeyAsync(IPage page, CancellationToken ct = default)
     {
-        var stepHeaderLocator = page.Locator("[data-automation-id='step-header'], h1");
-        if (await stepHeaderLocator.CountAsync() > 0)
+        try
         {
-            var text = await stepHeaderLocator.First.InnerTextAsync();
-            return text.Trim();
+            var stepText = await page.EvaluateAsync<string?>(@"() => {
+                // 1. Check active step in progress bar
+                const activeStep = document.querySelector('[data-automation-id=""progressBarActiveStep""], [aria-current=""step""]');
+                if (activeStep && activeStep.innerText) {
+                    const lines = activeStep.innerText.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    // Usually lines are ['step 1 of 5', 'My Information'] -> return the last line
+                    const label = lines[lines.length - 1].replace(/^(?:current\s+)?step\s+\d+\s+of\s+\d+\s*/i, '').trim();
+                    if (label) return label;
+                }
+
+                // 2. Step header
+                const header = document.querySelector('[data-automation-id=""step-header""], [data-automation-id=""selectedStep""], [data-automation-id=""currentStep""], [data-automation-id=""pageHeader""]');
+                if (header && header.innerText && header.innerText.trim()) {
+                    return header.innerText.trim();
+                }
+
+                // 3. Look at h3 or h2 excluding jobTitleHeading
+                const h3s = Array.from(document.querySelectorAll('h3, h2:not([data-automation-id=""jobTitleHeading""])'));
+                for (const h of h3s) {
+                    const txt = (h.innerText || '').trim();
+                    if (txt && !txt.includes('.NET') && !txt.includes('Developer') && txt.length < 50) {
+                        return txt;
+                    }
+                }
+
+                return null;
+            }");
+
+            if (!string.IsNullOrWhiteSpace(stepText))
+                return stepText.Trim();
+        }
+        catch
+        {
+            // fallback
         }
 
         var title = await page.TitleAsync();
-        return title;
+        return !string.IsNullOrWhiteSpace(title) ? title.Trim() : null;
     }
 
     public async Task<IReadOnlyList<FieldDescriptor>> InspectFieldsAsync(
@@ -72,123 +114,108 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
         string? stepKey,
         CancellationToken ct = default)
     {
-        var descriptors = new List<FieldDescriptor>();
-
-        // Query all candidate interactive elements
-        var elementHandles = await page.Locator(
-            "input:not([type='hidden']), select, textarea, div[role='combobox'], div[role='listbox']"
-        ).ElementHandlesAsync();
-
-        foreach (var handle in elementHandles)
+        try
         {
-            var isVisible = await handle.IsVisibleAsync();
-            if (!isVisible) continue;
-
-            // Extract element properties
-            var tagName = (await handle.EvaluateAsync<string>("el => el.tagName.toLowerCase()")) ?? "";
-            var type = (await handle.GetAttributeAsync("type"))?.ToLowerInvariant() ?? "";
-            var autoId = await handle.GetAttributeAsync("data-automation-id");
-            var id = await handle.GetAttributeAsync("id");
-            var name = await handle.GetAttributeAsync("name");
-
-            // SAFETY: Explicitly exclude any button or submit controls from field descriptors
-            if (autoId == "bottom-navigation-submit-button" ||
-                autoId == "bottom-navigation-next-button" ||
-                autoId == "bottom-navigation-back-button" ||
-                type == "submit" || type == "button")
+            // Wait for form inputs or active step to attach and mount
+            await page.WaitForSelectorAsync("input, select, textarea, div[role='combobox'], [data-automation-id='progressBarActiveStep'], [data-automation-id='pageFooterNextButton']", new PageWaitForSelectorOptions
             {
-                continue;
-            }
+                Timeout = 5000,
+                State = WaitForSelectorState.Attached
+            });
+        }
+        catch
+        {
+            // If timeout, proceed immediately with whatever is present in DOM
+        }
 
-            // Extract label
-            var label = await ExtractLabelAsync(page, handle, id, name);
-            if (string.IsNullOrWhiteSpace(label))
-            {
-                label = autoId ?? id ?? name ?? "Unknown Field";
-            }
+        var json = await page.EvaluateAsync<string>(InspectScript) ?? "[]";
 
-            // Clean asterisk if present in label
-            var isRequired = (await handle.GetAttributeAsync("required") != null) ||
-                             (await handle.GetAttributeAsync("aria-required") == "true") ||
-                             label.Contains('*');
-            label = label.Replace("*", "").Trim();
+        var rawElements = JsonSerializer.Deserialize<List<RawElementDto>>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        }) ?? [];
 
-            // Extract section
-            var section = await ExtractSectionAsync(handle);
+        var descriptors = new List<FieldDescriptor>();
+        var seenFingerprints = new HashSet<string>();
 
-            // Determine FieldType
-            var fieldType = DetermineFieldType(tagName, type);
+        foreach (var raw in rawElements)
+        {
+            var fieldType = !string.IsNullOrWhiteSpace(raw.FieldType) && Enum.TryParse<FieldType>(raw.FieldType, out var ft)
+                ? ft
+                : DetermineFieldType(raw.TagName, raw.Type);
 
-            // Extract options if select or radio
             JsonDocument? optionsDoc = null;
-            if (fieldType == FieldType.SingleSelect && tagName == "select")
+            if (raw.Options != null && raw.Options.Count > 0)
             {
-                var rawOptions = await handle.EvaluateAsync<string[][]>(@"el => {
-                    if (!el.options) return [];
-                    const opts = [];
-                    for (let i = 0; i < el.options.length; i++) {
-                        const opt = el.options[i];
-                        if (opt && opt.value) {
-                            opts.push([opt.value, (opt.text || opt.value).trim()]);
-                        }
-                    }
-                    return opts;
-                }");
-
-                if (rawOptions != null && rawOptions.Length > 0)
-                {
-                    var optionsList = rawOptions.Select(r => new { Key = r[0], Label = r[1] }).ToList();
-                    optionsDoc = JsonSerializer.SerializeToDocument(optionsList);
-                }
-            }
-            else if (fieldType == FieldType.Radio)
-            {
-                var value = await handle.GetAttributeAsync("value") ?? "";
-                var opts = new[] { new { Key = value, Label = label } };
-                optionsDoc = JsonSerializer.SerializeToDocument(opts);
+                optionsDoc = JsonSerializer.SerializeToDocument(raw.Options);
             }
 
-            // Extract current page value
-            string? pageValue = null;
-            try
-            {
-                pageValue = await handle.InputValueAsync();
-            }
-            catch
-            {
-                // Non-input elements might not support InputValue
-            }
-
-            // Build locator recipe
             var recipeObj = new Dictionary<string, string>();
-            if (!string.IsNullOrWhiteSpace(autoId)) recipeObj["automationId"] = autoId;
-            if (!string.IsNullOrWhiteSpace(id)) recipeObj["id"] = id;
-            if (!string.IsNullOrWhiteSpace(name)) recipeObj["name"] = name;
-            recipeObj["tagName"] = tagName;
-            if (!string.IsNullOrWhiteSpace(type)) recipeObj["type"] = type;
+            if (!string.IsNullOrWhiteSpace(raw.AutoId)) recipeObj["automationId"] = raw.AutoId;
+            if (!string.IsNullOrWhiteSpace(raw.Id)) recipeObj["id"] = raw.Id;
+            if (!string.IsNullOrWhiteSpace(raw.Name)) recipeObj["name"] = raw.Name;
+            recipeObj["tagName"] = raw.TagName;
+            if (!string.IsNullOrWhiteSpace(raw.Type)) recipeObj["type"] = raw.Type;
+            if (!string.IsNullOrWhiteSpace(raw.Kind)) recipeObj["kind"] = raw.Kind;
+            if (!string.IsNullOrWhiteSpace(raw.Container)) recipeObj["container"] = raw.Container;
 
             var locatorRecipe = JsonSerializer.SerializeToDocument(recipeObj);
+            var identifier = raw.Ident ?? raw.AutoId ?? raw.Id ?? raw.Name ?? raw.Label;
 
-            // Compute deterministic fingerprint
-            var identifier = autoId ?? id ?? name ?? label;
-            var fingerprint = ComputeFingerprint(stepKey, section, identifier, fieldType);
+            // Workday widgets are keyed by their unique control id, so the section is left out of the
+            // fingerprint. That keeps fingerprints identical to the ones stored by the earlier inspector
+            // (whose section was always empty on Workday pages) and so keeps existing approvals attached.
+            var isWorkdayWidget = !string.IsNullOrWhiteSpace(raw.Kind) && raw.Kind != "generic";
+            var fingerprintSection = isWorkdayWidget ? null : raw.Section;
+            var baseFingerprint = ComputeFingerprint(stepKey, fingerprintSection, identifier, fieldType);
+            var fingerprint = baseFingerprint;
+            var disambiguator = 1;
+            while (!seenFingerprints.Add(fingerprint))
+            {
+                disambiguator++;
+                fingerprint = ComputeFingerprint(stepKey, fingerprintSection, $"{identifier}#{disambiguator}", fieldType);
+            }
 
             descriptors.Add(new FieldDescriptor(
-                FieldId: Guid.Empty, // Will be set or matched by caller
+                FieldId: Guid.Empty,
                 Fingerprint: fingerprint,
-                FieldIdentifier: identifier,
-                Label: label,
+                FieldIdentifier: disambiguator > 1 ? $"{identifier}#{disambiguator}" : identifier,
+                Label: raw.Label,
                 Type: fieldType,
-                Required: isRequired,
-                Section: section,
+                Required: raw.IsRequired,
+                Section: raw.Section,
                 StepKey: stepKey,
-                PageValue: pageValue,
+                PageValue: raw.PageValue,
                 AvailableOptions: optionsDoc,
                 LocatorRecipe: locatorRecipe
             ));
         }
 
         return descriptors;
+    }
+
+    private sealed class RawElementDto
+    {
+        public string TagName { get; set; } = "";
+        public string Type { get; set; } = "";
+        public string? AutoId { get; set; }
+        public string? Id { get; set; }
+        public string? Name { get; set; }
+        public string? Ident { get; set; }
+        public string Label { get; set; } = "";
+        public bool IsRequired { get; set; }
+        public string? Section { get; set; }
+        public string? PageValue { get; set; }
+        public List<OptionDto>? Options { get; set; }
+        public string? Kind { get; set; }
+        public string? FieldType { get; set; }
+        public string? Container { get; set; }
+    }
+
+    private sealed class OptionDto
+    {
+        public string Key { get; set; } = "";
+        public string Label { get; set; } = "";
     }
 
     public async Task<FillResult> FillFieldAsync(
@@ -206,10 +233,36 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
             throw new InvalidOperationException("JobPilot is technically prohibited from automating the final Workday Submit control.");
         }
 
+        // Sanitize phone numbers: Workday national phone inputs reject country code prefixes
+        if ((field.FieldIdentifier.Contains("phone", StringComparison.OrdinalIgnoreCase) ||
+             field.Label.Contains("Phone", StringComparison.OrdinalIgnoreCase)) &&
+            !field.FieldIdentifier.Contains("countryPhoneCode", StringComparison.OrdinalIgnoreCase))
+        {
+            if (targetValue.StartsWith("+91")) targetValue = targetValue[3..];
+            else if (targetValue.StartsWith("+1")) targetValue = targetValue[2..];
+            else targetValue = System.Text.RegularExpressions.Regex.Replace(targetValue, @"^\+\d{1,3}", "");
+            targetValue = targetValue.TrimStart('0').Trim();
+        }
+
         ILocator locator = ResolveLocator(page, field);
         if (await locator.CountAsync() == 0)
         {
-            return new FillResult(false, null, $"Element for field '{field.Label}' could not be located.");
+            return new FillResult(false, null, $"Element for field '{field.Label}' could not be located on the current page.");
+        }
+
+        // Workday widgets detected by the formField-aware inspector get dedicated handling;
+        // file uploads and rows recorded by the old inspector use the generic path below.
+        var kind = GetRecipeValue(field, "kind");
+        if (kind is "prompt" or "dropdown" or "radio" or "date" or "checkboxGroup" or "checkbox" or "text")
+        {
+            try
+            {
+                return await FillWorkdayWidgetAsync(page, field, kind, locator, targetValue, optionKey, ct);
+            }
+            catch (Exception ex)
+            {
+                return new FillResult(false, null, $"Fill error: {ex.Message}");
+            }
         }
 
         try
@@ -232,23 +285,52 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
                     break;
 
                 case FieldType.SingleSelect:
-                    // Attempt select by value or label
-                    var selectVal = !string.IsNullOrWhiteSpace(optionKey) ? optionKey : targetValue;
-                    try
+                    var tagName = (await locator.EvaluateAsync<string>("el => (el.tagName || '').toLowerCase()")) ?? "";
+                    if (tagName == "select")
                     {
-                        await locator.SelectOptionAsync(new SelectOptionValue { Value = selectVal });
+                        var selectVal = !string.IsNullOrWhiteSpace(optionKey) ? optionKey : targetValue;
+                        try
+                        {
+                            await locator.SelectOptionAsync(new SelectOptionValue { Value = selectVal });
+                        }
+                        catch
+                        {
+                            await locator.SelectOptionAsync(new SelectOptionValue { Label = targetValue });
+                        }
                     }
-                    catch
+                    else if (tagName == "input")
                     {
-                        // Fallback: select by label
-                        await locator.SelectOptionAsync(new SelectOptionValue { Label = targetValue });
+                        await locator.FillAsync(targetValue);
+                        await page.Keyboard.PressAsync("Enter");
+                    }
+                    else
+                    {
+                        await locator.ClickAsync();
+                        await page.WaitForTimeoutAsync(300);
+                        var optionLocator = page.Locator($"[role='option']:has-text('{targetValue}'), [data-automation-label='{targetValue}']").First;
+                        if (await optionLocator.CountAsync() > 0)
+                        {
+                            await optionLocator.ClickAsync();
+                        }
+                        else
+                        {
+                            await page.Keyboard.TypeAsync(targetValue);
+                            await page.Keyboard.PressAsync("Enter");
+                        }
                     }
                     break;
 
                 case FieldType.FileUpload:
                     if (File.Exists(targetValue))
                     {
-                        await locator.SetInputFilesAsync(targetValue);
+                        var isFileInput = await locator.EvaluateAsync<bool>("el => (el.tagName || '').toLowerCase() === 'input' && (el.type || '').toLowerCase() === 'file'");
+                        var fileInput = isFileInput ? locator : locator.Locator("input[type='file']").First;
+                        if (await fileInput.CountAsync() == 0)
+                        {
+                            fileInput = page.Locator("input[type='file']").First;
+                        }
+                        await fileInput.SetInputFilesAsync(targetValue);
+                        await page.WaitForTimeoutAsync(1000);
                     }
                     else
                     {
@@ -261,7 +343,7 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
                     break;
             }
 
-            // Verify-after-write: read back value from DOM
+            // Verify-after-write: read back value from DOM safely without timeout
             string? readBackValue = null;
             try
             {
@@ -279,12 +361,12 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
                 }
                 else
                 {
-                    readBackValue = await locator.InputValueAsync();
+                    readBackValue = await locator.EvaluateAsync<string>("el => ('value' in el) ? (el.value || '') : (el.innerText || '')");
                 }
             }
             catch
             {
-                readBackValue = targetValue; // fallback if element does not support InputValue
+                readBackValue = targetValue;
             }
 
             return new FillResult(true, readBackValue, null);
@@ -301,7 +383,17 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
         if (await nextBtn.CountAsync() > 0)
         {
             await nextBtn.First.ClickAsync();
-            await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded);
+            try
+            {
+                await page.WaitForLoadStateAsync(LoadState.DOMContentLoaded, new PageWaitForLoadStateOptions { Timeout = 10000 });
+            }
+            catch
+            {
+                // SPA navigation might not trigger traditional DOMContentLoaded
+            }
+
+            // Allow Workday React router to mount next step components
+            await Task.Delay(2000, ct);
             return true;
         }
         return false;
@@ -375,7 +467,8 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
             }
             if (root.TryGetProperty("id", out var idProp) && !string.IsNullOrWhiteSpace(idProp.GetString()))
             {
-                return page.Locator($"#{idProp.GetString()}").First;
+                // Attribute form: Workday ids can start with a digit, which "#id" can't express.
+                return page.Locator($"[id='{CssAttr(idProp.GetString()!)}']").First;
             }
             if (root.TryGetProperty("name", out var nameProp) && !string.IsNullOrWhiteSpace(nameProp.GetString()))
             {
@@ -388,45 +481,51 @@ public sealed class WorkdayAdapter : IWorkdayAdapter
             return page.Locator($"[data-automation-id='{field.FieldIdentifier}'], #{field.FieldIdentifier}, [name='{field.FieldIdentifier}']").First;
         }
 
+        if (field.Type == FieldType.FileUpload)
+        {
+            return page.Locator("input[type='file']").First;
+        }
+
         return page.GetByLabel(field.Label).First;
     }
 
     private static async Task<string> ExtractLabelAsync(IPage page, IElementHandle handle, string? id, string? name)
     {
-        // 1. Label by for attribute
-        if (!string.IsNullOrWhiteSpace(id))
-        {
-            var labelEl = await page.QuerySelectorAsync($"label[for='{id}']");
-            if (labelEl != null)
-            {
-                var txt = await labelEl.InnerTextAsync();
-                if (!string.IsNullOrWhiteSpace(txt)) return txt.Trim();
+        return await handle.EvaluateAsync<string>(@"el => {
+            // 1. Label by for attribute using CSS.escape safely
+            if (el.id) {
+                try {
+                    const l = document.querySelector(`label[for=""${CSS.escape(el.id)}""]`);
+                    if (l && l.innerText && l.innerText.trim()) return l.innerText.trim();
+                } catch {}
             }
-        }
 
-        // 2. aria-label
-        var ariaLabel = await handle.GetAttributeAsync("aria-label");
-        if (!string.IsNullOrWhiteSpace(ariaLabel)) return ariaLabel.Trim();
+            // 2. aria-label
+            const ariaLabel = el.getAttribute('aria-label');
+            if (ariaLabel && ariaLabel.trim()) return ariaLabel.trim();
 
-        // 3. Parent label
-        var parentLabel = await handle.EvaluateAsync<string>(@"el => {
-            const label = el.closest('label');
-            return label ? label.innerText.trim() : null;
-        }");
-        if (!string.IsNullOrWhiteSpace(parentLabel)) return parentLabel;
+            // 3. Parent label
+            const parentLabel = el.closest('label');
+            if (parentLabel && parentLabel.innerText && parentLabel.innerText.trim()) return parentLabel.innerText.trim();
 
-        // 4. Preceding legend or label element
-        var precedingText = await handle.EvaluateAsync<string>(@"el => {
-            const fg = el.closest('.form-group');
+            // 4. Preceding legend or label element
+            const fg = el.closest('.form-group, [data-automation-id*=""formField""], [data-automation-id*=""field""]');
             if (fg) {
-                const l = fg.querySelector('label, .radio-legend');
-                if (l) return l.innerText.trim();
+                const l = fg.querySelector('label, .radio-legend, legend, [data-automation-id*=""label""]');
+                if (l && l.innerText && l.innerText.trim()) return l.innerText.trim();
             }
-            return null;
-        }");
-        if (!string.IsNullOrWhiteSpace(precedingText)) return precedingText;
 
-        return "";
+            // 5. File upload dropzone container label
+            const drop = el.closest('[data-automation-id*=""dropZone""], [data-automation-id*=""upload""], [data-automation-id*=""file""], [data-automation-id*=""attachment""], .dropzone, .file-upload');
+            if (drop) {
+                const header = drop.querySelector('h2, h3, h4, [data-automation-id*=""label""], .title, .file-upload-title');
+                if (header && header.innerText && header.innerText.trim()) return header.innerText.trim();
+                const lines = drop.innerText.split('\n').map(s => s.trim()).filter(s => s.length > 0);
+                if (lines.length > 0) return lines[0];
+            }
+
+            return '';
+        }") ?? "";
     }
 
     private static async Task<string?> ExtractSectionAsync(IElementHandle handle)

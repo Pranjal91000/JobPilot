@@ -1,9 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using JobPilot.Application.Abstractions;
 using JobPilot.Application.Features.Mapping;
 using JobPilot.Domain.Entities;
 using JobPilot.Domain.Enums;
 using JobPilot.Infrastructure.Persistence;
+using JobPilot.Infrastructure.Services;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,15 +38,19 @@ public class FieldMappingController : ControllerBase
         _clock = clock;
     }
 
+    // Enums are serialised as names: the UI compares against 'Approved', 'Llm', 'MultiSelect', etc.
     public sealed record FieldDetailDto(
         Guid FieldId,
         string FieldIdentifier,
         string Label,
-        FieldType Type,
+        [property: JsonConverter(typeof(JsonStringEnumConverter<FieldType>))] FieldType Type,
         bool Required,
         string? Section,
+        string? StepKey,
         string? PageValue,
         JsonDocument? AvailableOptions,
+        string? FillStatus,
+        string? FillError,
         FieldMappingDto? Mapping,
         AnswerDto? Answer);
 
@@ -54,9 +60,9 @@ public class FieldMappingController : ControllerBase
         string? SuggestedValue,
         string? SuggestedOptionKey,
         decimal ConfidenceScore,
-        MappingStatus Status,
-        MappingMethod Method,
-        MappingSource Source,
+        [property: JsonConverter(typeof(JsonStringEnumConverter<MappingStatus>))] MappingStatus Status,
+        [property: JsonConverter(typeof(JsonStringEnumConverter<MappingMethod>))] MappingMethod Method,
+        [property: JsonConverter(typeof(JsonStringEnumConverter<MappingSource>))] MappingSource Source,
         bool RequiresIntervention,
         bool IsSensitive,
         string? Reason);
@@ -112,20 +118,25 @@ public class FieldMappingController : ControllerBase
             return Ok(Array.Empty<FieldDetailDto>());
         }
 
-        var appFields = await _db.ApplicationFields
-            .Where(f => f.SessionId == session.SessionId)
+        var allFields = await _db.ApplicationFields
+            .Include(f => f.Mappings)
+            .Include(f => f.Answer)
+            .Where(f => f.SessionId == session.SessionId && f.IsPresent)
             .OrderBy(f => f.FirstSeenAt)
             .ToListAsync(ct);
 
+        // Approved fields keep their approved value: re-mapping must never reset them.
+        // They change only through an explicit edit or reject.
+        var appFields = allFields.Where(f => !IsApproved(f)).ToList();
+
         if (appFields.Count == 0)
         {
-            return Ok(Array.Empty<FieldDetailDto>());
+            return Ok(await LoadFieldDtosAsync(session.SessionId, ct));
         }
 
         var profile = await _profileService.GetVerifiedSnapshotAsync(ct);
-        var savedAnswers = await _db.SavedAnswers
-            .Where(a => a.UserId == _currentUser.UserId)
-            .ToListAsync(ct);
+        // Saved answers plus everything approved in past applications, used as reference.
+        var savedAnswers = await PastAnswerReference.LoadAsync(_db, _currentUser.UserId, ct);
 
         var aiSettings = await _aiSettingsService.GetSettingsAsync(ct);
 
@@ -149,6 +160,12 @@ public class FieldMappingController : ControllerBase
             SectionTitle: null,
             AiEnabled: aiSettings.IsEnabled && aiSettings.HasApiKey);
 
+        // The AI call can take longer than the browser/proxy keeps the request open.
+        // Don't tie the mapping + persistence to RequestAborted: if the client drops,
+        // finish the work anyway so the results are saved and appear on the next fields fetch.
+        // The AI provider still applies its own per-call timeout.
+        ct = CancellationToken.None;
+
         var results = await _mappingService.MapFieldsAsync(descriptors, profile, savedAnswers, context, ct);
 
         // Persist mapping results
@@ -156,6 +173,7 @@ public class FieldMappingController : ControllerBase
         {
             var existingMapping = await _db.FieldMappings
                 .FirstOrDefaultAsync(m => m.FieldId == res.FieldId && m.IsCurrent, ct);
+            if (existingMapping?.MappingStatus == MappingStatus.Approved) continue;
 
             if (existingMapping == null)
             {
@@ -196,7 +214,41 @@ public class FieldMappingController : ControllerBase
         return Ok(updatedDtos);
     }
 
-    public sealed record FieldDecisionRequest(string Action, string? Value, string? OptionKey);
+    private async Task SaveStandingAnswerAsync(ApplicationField field, string value, CancellationToken ct)
+    {
+        var canonical = System.Text.RegularExpressions.Regex.Replace(field.FieldIdentifier ?? "", @"#\d+$", "");
+        if (canonical.Length > 128) canonical = canonical[..128];
+        var normalized = System.Text.RegularExpressions.Regex.Replace(field.FieldLabel.ToLowerInvariant(), @"[^\w\s]", "").Trim();
+
+        var existing = await _db.SavedAnswers.FirstOrDefaultAsync(a =>
+            a.Scope == SavedAnswerScope.Global &&
+            (a.QuestionNormalized == normalized || (canonical != "" && a.CanonicalKey == canonical)), ct);
+
+        if (existing == null)
+        {
+            existing = new SavedAnswer
+            {
+                UserId = _currentUser.UserId,
+                Scope = SavedAnswerScope.Global,
+                CanonicalKey = canonical.Length > 0 ? canonical : normalized,
+                QuestionText = field.FieldLabel,
+                QuestionNormalized = normalized
+            };
+            _db.SavedAnswers.Add(existing);
+        }
+
+        existing.AnswerValue = value;
+        existing.IsSensitive = JobPilot.Domain.Policies.SensitiveQuestionPolicy.Evaluate(field.FieldLabel, null, field.PageSection).IsSensitive;
+        existing.ApprovedAt = _clock.UtcNow;
+    }
+
+    private static bool IsApproved(ApplicationField f) =>
+        (f.Answer?.IsUserApproved ?? false) ||
+        f.Mappings.Any(m => m.IsCurrent && m.MappingStatus == MappingStatus.Approved);
+
+    /// <param name="SaveForReuse">Also save the answer for all future applications (standing answer).
+    /// This is how sensitive questions get answered once and then filled automatically.</param>
+    public sealed record FieldDecisionRequest(string Action, string? Value, string? OptionKey, bool SaveForReuse = false);
 
     [HttpPost("{fieldId:guid}/decision")]
     public async Task<IActionResult> MakeDecision(
@@ -273,6 +325,10 @@ public class FieldMappingController : ControllerBase
                 field.Answer.IsUserApproved = true;
                 field.Answer.ApprovedAt = _clock.UtcNow;
             }
+
+            // The value changed, so whatever was filled in the browser before is stale.
+            field.FillStatus = "PendingFill";
+            field.FillError = null;
         }
         else if (req.Action.Equals("Reject", StringComparison.OrdinalIgnoreCase))
         {
@@ -286,6 +342,11 @@ public class FieldMappingController : ControllerBase
             {
                 field.Answer.IsUserApproved = false;
             }
+        }
+
+        if (req.SaveForReuse && field.Answer is { IsUserApproved: true } && !string.IsNullOrWhiteSpace(field.Answer.AnswerValue))
+        {
+            await SaveStandingAnswerAsync(field, field.Answer.AnswerValue!, ct);
         }
 
         await _db.SaveChangesAsync(ct);
@@ -361,7 +422,7 @@ public class FieldMappingController : ControllerBase
         var fields = await _db.ApplicationFields
             .Include(f => f.Mappings)
             .Include(f => f.Answer)
-            .Where(f => f.SessionId == sessionId)
+            .Where(f => f.SessionId == sessionId && f.IsPresent)
             .OrderBy(f => f.FirstSeenAt)
             .ToListAsync(ct);
 
@@ -393,8 +454,11 @@ public class FieldMappingController : ControllerBase
                 f.FieldType,
                 f.IsRequired,
                 f.PageSection,
+                f.StepKey,
                 f.PageValueText,
                 f.AvailableOptions,
+                f.FillStatus,
+                f.FillError,
                 mappingDto,
                 answerDto);
         }).ToList();

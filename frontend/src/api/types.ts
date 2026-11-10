@@ -296,8 +296,12 @@ export interface FieldDetailDto {
   type: FieldType;
   required: boolean;
   section?: string | null;
+  stepKey?: string | null;
   pageValue?: string | null;
   availableOptions?: any;
+  /** 'FilledVerified' | 'FillFailed' | 'PendingFill' | 'Discovered' | null */
+  fillStatus?: string | null;
+  fillError?: string | null;
   mapping?: FieldMappingDto | null;
   answer?: AnswerDto | null;
 }
@@ -344,8 +348,9 @@ export type SessionStatus =
 export interface SessionDto {
   sessionId: string;
   applicationId: string;
-  sessionStatus: SessionStatus;
-  authState: string;
+  status?: SessionStatus | number;
+  sessionStatus?: SessionStatus;
+  authState?: string | number;
   currentStepKey?: string | null;
   completionPercentage: number;
   lastActivityAt: string;
@@ -385,4 +390,29 @@ export interface SubmissionApprovalDto {
   submissionControl: string;
   instructions: string;
   watchingForConfirmationUntil: string;
+}
+
+// Unattended runs
+export type RunState = 'Queued' | 'Running' | 'NeedsUser' | 'ReadyForReview' | 'Failed';
+
+export interface RunStatusDto {
+  applicationId: string;
+  sessionId: string;
+  runState?: RunState | null;
+  runMessage?: string | null;
+  currentStepKey?: string | null;
+  sessionStatus: string;
+  lastActivityAt: string;
+}
+
+export interface BatchRunItem {
+  url: string;
+  applicationId?: string | null;
+  error?: string | null;
+}
+
+export interface WorkdayLoginDto {
+  email?: string | null;
+  hasPassword: boolean;
+  sitesWithAccounts: string[];
 }

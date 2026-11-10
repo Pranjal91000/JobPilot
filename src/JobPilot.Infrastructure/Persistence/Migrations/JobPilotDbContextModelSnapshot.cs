@@ -431,6 +431,16 @@ namespace JobPilot.Infrastructure.Persistence.Migrations
                         .HasColumnType("xid")
                         .HasColumnName("xmin");
 
+                    b.Property<string>("RunMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("run_message");
+
+                    b.Property<string>("RunState")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("run_state");
+
                     b.Property<string>("SessionStatus")
                         .IsRequired()
                         .HasMaxLength(32)
@@ -453,13 +463,8 @@ namespace JobPilot.Infrastructure.Persistence.Migrations
                     b.HasKey("SessionId")
                         .HasName("pk_application_session");
 
-                    b.HasIndex("ApplicationId")
-                        .HasDatabaseName("ix_application_session_application_id");
-
-                    b.HasIndex("SessionStatus")
-                        .IsUnique()
-                        .HasDatabaseName("ix_application_session_session_status")
-                        .HasFilter("session_status IN ('Pending','Launching','AwaitingAuthentication','AwaitingUser','Inspecting','Mapping','Filling','Navigating','WatchingForConfirmation','Paused')");
+                    b.HasIndex("ApplicationId", "SessionStatus")
+                        .HasDatabaseName("ix_application_session_application_id_session_status");
 
                     b.ToTable("application_session", "jobpilot");
                 });
@@ -2234,6 +2239,66 @@ namespace JobPilot.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_work_authorization_user_id_country_code");
 
                     b.ToTable("work_authorization", "jobpilot");
+                });
+
+            modelBuilder.Entity("JobPilot.Domain.Entities.WorkdayCredential", b =>
+                {
+                    b.Property<Guid>("CredentialId")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("credential_id");
+
+                    b.Property<bool>("AccountExists")
+                        .HasColumnType("boolean")
+                        .HasColumnName("account_exists");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasColumnName("email");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("PasswordEnc")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("password_enc");
+
+                    b.Property<uint>("RowVersion")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("xid")
+                        .HasColumnName("xmin");
+
+                    b.Property<string>("TenantKey")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("tenant_key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("CredentialId")
+                        .HasName("pk_workday_credential");
+
+                    b.HasIndex("UserId", "TenantKey")
+                        .IsUnique()
+                        .HasDatabaseName("ix_workday_credential_user_id_tenant_key");
+
+                    b.ToTable("workday_credential", "jobpilot");
                 });
 
             modelBuilder.Entity("JobPilot.Domain.Entities.WorkerHeartbeat", b =>

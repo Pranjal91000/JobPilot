@@ -144,12 +144,14 @@ public class ApplicationSessionConfiguration : IEntityTypeConfiguration<Applicat
         b.Property(x => x.CurrentStepKey).HasMaxLength(100);
         b.Property(x => x.FailureReason).HasMaxLength(1000);
         b.Property(x => x.WorkerInstanceId).HasMaxLength(100);
+        b.Property(x => x.RunState).HasMaxLength(32);
+        b.Property(x => x.RunMessage).HasMaxLength(2000);
         b.Property(x => x.RowVersion).IsRowVersion();
 
-        // Enforce single active session rule (ADR-012)
-        b.HasIndex(x => x.SessionStatus)
-            .HasFilter("session_status IN ('Pending','Launching','AwaitingAuthentication','AwaitingUser','Inspecting','Mapping','Filling','Navigating','WatchingForConfirmation','Paused')")
-            .IsUnique();
+        // ADR-012 originally allowed one active session in the whole app (unique index on status).
+        // Batch runs keep several applications open at Workday's Review page at once, so the rule
+        // is now "one active session per application", enforced in WorkdayAutomationService.
+        b.HasIndex(x => new { x.ApplicationId, x.SessionStatus });
 
         b.HasOne(x => x.Application)
             .WithMany(a => a.Sessions)
@@ -371,3 +373,16 @@ public class WorkerHeartbeatConfiguration : IEntityTypeConfiguration<WorkerHeart
     }
 }
 
+public class WorkdayCredentialConfiguration : IEntityTypeConfiguration<WorkdayCredential>
+{
+    public void Configure(EntityTypeBuilder<WorkdayCredential> b)
+    {
+        b.ToTable("workday_credential");
+        b.HasKey(x => x.CredentialId);
+        b.Property(x => x.TenantKey).HasMaxLength(100).IsRequired();
+        b.Property(x => x.Email).HasMaxLength(320).IsRequired();
+        b.Property(x => x.PasswordEnc).IsRequired();
+        b.Property(x => x.RowVersion).IsRowVersion();
+        b.HasIndex(x => new { x.UserId, x.TenantKey }).IsUnique();
+    }
+}

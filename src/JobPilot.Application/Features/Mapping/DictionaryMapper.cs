@@ -10,8 +10,8 @@ public sealed class DictionaryMapper : IDictionaryMapper
 
     private static readonly DictionaryRule[] Rules =
     [
-        new(new Regex(@"^(first\s*name|given\s*name|prénom|forename)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.FirstName", 0.97m),
-        new(new Regex(@"^(last\s*name|family\s*name|surname|nom(\s*de\s*famille)?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.LastName", 0.97m),
+        new(new Regex(@"^(first\s*names?(\(s\))?|given\s*names?(\(s\))?|prénom|forename)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.FirstName", 0.97m),
+        new(new Regex(@"^(last\s*names?(\(s\))?|family\s*names?(\(s\))?|surname|nom(\s*de\s*famille)?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Personal.LastName", 0.97m),
         new(new Regex(@"^(email(\s*address)?|e-mail(\s*address)?|courriel)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Contact.Email", 0.97m),
         new(new Regex(@"^(phone(\s*number)?|mobile(\s*phone)?|cell(\s*phone)?|telephone|contact\s*number)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Contact.PhoneNational", 0.97m),
         new(new Regex(@"^(street(\s*address)?|address(\s*line\s*1)?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Address.Line1", 0.96m),
@@ -23,7 +23,14 @@ public sealed class DictionaryMapper : IDictionaryMapper
         new(new Regex(@"^(notice\s*period(\s*in\s*days|\s*\(days\))?|availability(\s*\(days\))?)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Preferences.NoticePeriodDays", 0.95m),
         new(new Regex(@"^(total\s*years(\s*of)?\s*experience|years\s*of\s*experience|total\s*experience)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Employment.TotalExperienceYears", 0.95m),
         new(new Regex(@"^(current\s*(employer|company(\s*name)?)|present\s*employer)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Employment.Current.CompanyName", 0.95m),
-        new(new Regex(@"^(expected\s*(salary|ctc|compensation)|desired\s*salary)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Compensation.ExpectedSalary", 0.90m)
+        new(new Regex(@"^(job\s*title|position|role|title)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Employment.Current.JobTitle", 0.96m),
+        new(new Regex(@"^(company(\s*name)?|employer(\s*name)?|organization)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Employment.Current.CompanyName", 0.96m),
+        new(new Regex(@"^(school(\s*or\s*university)?|university|institution|college)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Education.Highest.School", 0.96m),
+        new(new Regex(@"^(degree(\s*level)?|qualification)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Education.Highest.Degree", 0.96m),
+        new(new Regex(@"^(field\s*of\s*study|major|specialization)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Education.Highest.FieldOfStudy", 0.96m),
+        new(new Regex(@"^(skills(\s*and\s*competencies)?|technical\s*skills)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Skills.All", 0.95m),
+        new(new Regex(@"(salary|ctc|compensation).*expectation|expected\s*(salary|ctc|compensation)|desired\s*salary", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Compensation.ExpectedSalary", 0.92m),
+        new(new Regex(@"^(resume(\s*\/\s*cv)?|cv|curriculum\s*vitae|attach(\s*your)?\s*resume)$", RegexOptions.IgnoreCase | RegexOptions.Compiled), "Documents.Resume", 0.98m)
     ];
 
     public FieldMappingResult? TryMap(FieldDescriptor field, VerifiedProfileSnapshot profile, MappingContext context)

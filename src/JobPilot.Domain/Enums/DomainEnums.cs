@@ -181,7 +181,18 @@ public enum AutomationCommandType
     Pause,
     Resume,
     Cancel,
-    CloseBrowser
+    CloseBrowser,
+    RunToReview
+}
+
+/// <summary>States of an unattended run (ApplicationSession.RunState).</summary>
+public static class RunStates
+{
+    public const string Queued = "Queued";
+    public const string Running = "Running";
+    public const string NeedsUser = "NeedsUser";
+    public const string ReadyForReview = "ReadyForReview";
+    public const string Failed = "Failed";
 }
 
 public enum AutomationCommandStatus
